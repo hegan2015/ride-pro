@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: ride-payment
+  main:
+    web-application-type: none
+  datasource:
+    url: jdbc:h2:file:${DATA_DIR:./data}/payment;MODE=MySQL;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
+dubbo:
+  application:
+    name: ride-payment
+    qos-enable: false
+  registry:
+    address: zookeeper://127.0.0.1:${ZK_PORT:2181}
+  protocol:
+    name: dubbo
+    port: ${PAYMENT_DUBBO_PORT:20887}
+  provider:
+    timeout: 5000
+    retries: 0
+  consumer:
+    check: false
+    timeout: 5000
+    retries: 0
+
+# 平台服务费基点（2000 = 20%），从乘客车费中抽取，司机实收 = 车费 - 服务费。
+payment:
+  fee-bps: 2000
+  platform-user-id: SYS_PLATFORM
+  outbox-interval-ms: 1000
+  outbox-max-retries: 10
+  outbox-alert-age-ms: 60000
+  audit-interval-ms: 30000
+  # 模拟提现渠道：受理冻结→2s 处理→成功扣款/失败解冻；失败率基点（0=永不失败，测试可调）。
+  withdraw-process-delay-ms: 2000
+  withdraw-fail-bps: 0
+  withdraw-process-interval-ms: 1000
+  risk:
+    topup-max-per-txn: 1000000
+    pay-max-per-txn: 10000000
+    transfer-max-per-txn: 1000000
+    refund-max-per-txn: 10000000
+    withdraw-max-per-txn: 500000
+    withdraw-max-per-day: 2000000
+    withdraw-max-count-per-day: 10
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n"

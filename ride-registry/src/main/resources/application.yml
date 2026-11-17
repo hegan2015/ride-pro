@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: ride-registry
+  main:
+    web-application-type: none
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n"

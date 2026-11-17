@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: ride-push
+  main:
+    web-application-type: none
+
+dubbo:
+  application:
+    name: ride-push
+    qos-enable: false
+  registry:
+    address: zookeeper://127.0.0.1:${ZK_PORT:2181}
+  protocol:
+    name: dubbo
+    port: ${PUSH_DUBBO_PORT:20888}
+  provider:
+    timeout: 5000
+    retries: 0
+  consumer:
+    check: false
+    timeout: 5000
+    retries: 0
+
+push:
+  websocket-port: ${PUSH_WS_PORT:9100}
+  websocket-path: /ws
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n"

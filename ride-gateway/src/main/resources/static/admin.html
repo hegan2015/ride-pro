@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理端 · ride-pro</title>
+  <link rel="stylesheet" href="common.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>🛠️ 管理端</h1>
+      <div class="sub"><a href="index.html">← 门户</a> · <a href="passenger.html">乘客端</a> · <a href="driver.html">司机端</a></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="badge info">X-Admin-Token 鉴权</span>
+      <button class="ghost" id="btnLogout" style="padding:6px 12px;font-size:12px">退出令牌</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="tabs">
+      <button data-tab="dash" class="active">📊 仪表盘</button>
+      <button data-tab="ledger">💳 资金流水</button>
+      <button data-tab="orders">📋 订单管理</button>
+      <button data-tab="wallets">👛 钱包总览</button>
+      <button data-tab="logs">🖥️ 系统日志</button>
+      <button data-tab="consistency">🔍 一致性监控</button>
+    </div>
+
+    <!-- 仪表盘 -->
+    <div class="tabpane active" id="pane-dash">
+      <div class="card" style="margin-bottom:16px">
+        <div class="spread">
+          <h2 style="margin:0"><span class="dot"></span>运营总览</h2>
+          <div class="btns" style="margin:0">
+            <button class="ghost" id="btnSeed">播种演示数据</button>
+            <button id="btnDashRefresh">刷新</button>
+          </div>
+        </div>
+        <div class="stats" id="dashStats" style="margin-top:14px"></div>
+        <div id="statusDist" style="margin-top:14px"></div>
+      </div>
+      <div class="grid cols-2">
+        <div class="card">
+          <h2><span class="dot"></span>资金统计（按流水类型）</h2>
+          <div class="table-scroll"><table class="table">
+            <thead><tr><th>类型</th><th>累计金额</th><th>笔数</th><th>今日金额</th></tr></thead>
+            <tbody id="payStatsBody"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2><span class="dot"></span>服务健康</h2>
+          <div class="table-scroll"><table class="table">
+            <thead><tr><th>服务</th><th>端口</th><th>状态</th></tr></thead>
+            <tbody id="healthBody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 资金流水 -->
+    <div class="tabpane" id="pane-ledger">
+      <div class="card">
+        <div class="spread">
+          <h2 style="margin:0"><span class="dot"></span>资金流水</h2>
+          <div class="btns" style="margin:0">
+            <button class="ghost" id="btnAudit">守恒校验</button>
+            <button class="ghost" id="btnCsv">导出 CSV</button>
+          </div>
+        </div>
+        <div class="filters" style="margin-top:12px">
+          <div><label>用户 ID</label><input id="lUser" placeholder="如 P1 / D1 / SYS_PLATFORM"></div>
+          <div><label>订单 ID</label><input id="lOrder" placeholder="如 O12"></div>
+          <div><label>类型</label><select id="lBiz"><option value="">全部</option></select></div>
+          <div><label>开始日期</label><input type="date" id="lFrom"></div>
+          <div><label>结束日期</label><input type="date" id="lTo"></div>
+          <button id="lSearch">查询</button>
+        </div>
+        <div class="table-scroll"><table class="table">
+          <thead><tr><th>时间</th><th>流水号</th><th>用户</th><th>类型</th><th>金额</th><th>变动后余额</th><th>订单</th></tr></thead>
+          <tbody id="ledgerBody"></tbody>
+        </table></div>
+        <div class="pager" id="ledgerPager"></div>
+        <div id="auditBox" style="display:none;margin-top:16px">
+          <h2><span class="dot"></span>账面核对（钱包余额 = 流水回放求和）</h2>
+          <div class="table-scroll"><table class="table">
+            <thead><tr><th>用户</th><th>钱包余额</th><th>流水求和</th><th>差额</th><th>笔数</th><th>结果</th></tr></thead>
+            <tbody id="auditBody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 订单管理 -->
+    <div class="tabpane" id="pane-orders">
+      <div class="card">
+        <h2><span class="dot"></span>订单管理</h2>
+        <div class="filters">
+          <div><label>乘客 ID</label><input id="oPassenger" placeholder="可选"></div>
+          <div><label>司机 ID</label><input id="oDriver" placeholder="可选"></div>
+          <div><label>状态</label><select id="oStatus"><option value="">全部</option></select></div>
+          <div><label>开始日期</label><input type="date" id="oFrom"></div>
+          <div><label>结束日期</label><input type="date" id="oTo"></div>
+          <button id="oSearch">查询</button>
+        </div>
+        <div class="table-scroll"><table class="table">
+          <thead><tr><th>订单</th><th>乘客</th><th>司机</th><th>行程</th><th>状态</th><th>预估/实际</th><th>叫车时间</th></tr></thead>
+          <tbody id="ordersBody"></tbody>
+        </table></div>
+        <div class="pager" id="ordersPager"></div>
+        <p class="muted small">点击行查看详情并处置：已支付可退款（反向划转+对账兜底），进行中异常单可强制取消。</p>
+      </div>
+    </div>
+
+    <!-- 钱包总览 -->
+    <div class="tabpane" id="pane-wallets">
+      <div class="card">
+        <div class="spread">
+          <h2 style="margin:0"><span class="dot"></span>钱包总览 + 账面核对</h2>
+          <button id="btnWalletRefresh">刷新</button>
+        </div>
+        <div class="table-scroll" style="margin-top:12px"><table class="table">
+          <thead><tr><th>用户</th><th>钱包余额</th><th>流水求和</th><th>差额</th><th>流水笔数</th><th>核对</th><th>最后动账</th></tr></thead>
+          <tbody id="walletsBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- 系统日志 -->
+    <div class="tabpane" id="pane-logs">
+      <div class="card">
+        <h2><span class="dot"></span>系统日志</h2>
+        <div class="filters">
+          <div><label>服务日志</label><select id="logFile"></select></div>
+          <div><label>行数</label><select id="logLines"><option>100</option><option selected>200</option><option>500</option><option>1000</option></select></div>
+          <button id="btnLogTail">查看尾部</button>
+          <div style="flex:2"><label>traceId 全链路检索</label><input id="logTrace" placeholder="粘贴 X-Trace-Id，跨全部服务检索"></div>
+          <button id="btnLogTrace">检索</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="logAuto" style="width:auto"> 每 5 秒自动刷新</label>
+        <pre class="logview" id="logView">选择日志文件或输入 traceId 后查看。</pre>
+      </div>
+    </div>
+
+    <!-- 一致性监控 -->
+    <div class="tabpane" id="pane-consistency">
+      <div class="card" style="margin-bottom:16px">
+        <div class="spread">
+          <h2 style="margin:0"><span class="dot"></span>支付 outbox 投递</h2>
+          <button id="btnConsRefresh">刷新</button>
+        </div>
+        <div class="stats" id="outboxStats" style="margin-top:12px"></div>
+        <p class="muted small" style="margin-top:10px">支付/退款成功事件与动账同事务写入 outbox，异步投递订单域；短暂积压属正常重试，积压超 10 秒或出现 DEAD 才告警，对账调度兜底完结。</p>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <h2><span class="dot"></span>DEAD 事件（重试耗尽，需人工重放）</h2>
+        <div class="table-scroll"><table class="table">
+          <thead><tr><th>类型</th><th>订单</th><th>幂等键</th><th>重试</th><th>创建时间</th><th>操作</th></tr></thead>
+          <tbody id="deadBody"></tbody>
+        </table></div>
+      </div>
+      <div class="grid cols-2">
+        <div class="card">
+          <h2><span class="dot"></span>WebSocket 连接</h2>
+          <div class="table-scroll"><table class="table">
+            <thead><tr><th>身份</th><th>状态</th><th>远端地址</th></tr></thead>
+            <tbody id="connBody"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2><span class="dot"></span>推送事件审计（最近 100）</h2>
+          <div class="table-scroll" style="max-height:420px;overflow-y:auto"><table class="table">
+            <thead><tr><th>时间</th><th>身份</th><th>事件</th><th>订单</th><th>投递</th></tr></thead>
+            <tbody id="pushBody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="common.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const LOG_NAMES = ['gateway', 'order', 'payment', 'dispatch', 'push', 'driver', 'passenger', 'location', 'pricing', 'registry'];
+    let token = localStorage.getItem('ride.adminToken') || '';
+    let ledgerPage = 1, ordersPage = 1, logTimer = null;
+
+    async function aapi(method, path, body) {
+      try {
+        return await api(method, path, body, { 'X-Admin-Token': token });
+      } catch (e) {
+        if (e.status === 401) { tokenGate(); throw new Error('管理端令牌无效，请重新输入'); }
+        throw e;
+      }
+    }
+
+    function tokenGate() {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <h3 style="margin:0 0 10px">管理端令牌</h3>
+          <p class="muted small">请输入 X-Admin-Token（默认 ride-admin，可用环境变量 ADMIN_TOKEN 覆盖）。</p>
+          <input id="tokenInput" type="password" placeholder="管理端令牌" value="${escapeHtml(token)}">
+          <div class="btns" style="justify-content:flex-end"><button id="tokenOk">进入管理端</button></div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const submit = async () => {
+        const v = overlay.querySelector('#tokenInput').value.trim();
+        if (!v) return toast('请输入令牌', 'warn');
+        try {
+          await api('GET', '/api/admin/overview', undefined, { 'X-Admin-Token': v });
+          token = v; localStorage.setItem('ride.adminToken', v);
+          overlay.remove(); switchTab('dash');
+        } catch (e) { toast('令牌校验失败：' + e.message, 'err'); }
+      };
+      overlay.querySelector('#tokenOk').onclick = submit;
+      overlay.querySelector('#tokenInput').onkeydown = e => { if (e.key === 'Enter') submit(); };
+    }
+    $('btnLogout').onclick = () => { localStorage.removeItem('ride.adminToken'); token = ''; tokenGate(); };
+
+    function switchTab(name) {
+      document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+      document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+      clearInterval(logTimer); logTimer = null;
+      if (name === 'dash') loadDash();
+      if (name === 'ledger') loadLedger(1);
+      if (name === 'orders') loadOrders(1);
+      if (name === 'wallets') loadWallets();
+      if (name === 'consistency') loadConsistency();
+    }
+    document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+
+    // ---- 仪表盘 ----
+    async function loadDash() {
+      try {
+        const ov = await aapi('GET', '/api/admin/overview');
+        const o = ov.orders;
+        $('dashStats').innerHTML = `
+          <div class="stat"><div class="n">${o.todayOrders}</div><div class="l">今日订单</div></div>
+          <div class="stat"><div class="n green">${yuan(o.todayGmv)}</div><div class="l">今日 GMV（已支付）</div></div>
+          <div class="stat"><div class="n green">${yuan(o.totalGmv)}</div><div class="l">累计 GMV</div></div>
+          <div class="stat"><div class="n">${o.totalOrders}</div><div class="l">总订单</div></div>
+          <div class="stat"><div class="n amber">${o.acceptRate != null ? (o.acceptRate * 100).toFixed(1) + '%' : '--'}</div><div class="l">接单率</div></div>
+          <div class="stat"><div class="n">${o.avgAcceptMs != null ? (o.avgAcceptMs / 1000).toFixed(1) + 's' : '--'}</div><div class="l">平均接单时长</div></div>
+          <div class="stat"><div class="n">${ov.onlineConnections}</div><div class="l">WS 在线连接</div></div>
+          <div class="stat"><div class="n ${(ov.outbox.pendingCount > 0 && ov.outbox.oldestPendingAgeMs > 10000) || ov.outbox.deadCount > 0 ? 'red' : 'green'}">${ov.outbox.pendingCount}</div><div class="l">outbox 积压</div></div>
+          <div class="stat"><div class="n ${ov.auditOk ? 'green' : 'red'}">${ov.auditOk ? '平' : '不平!'}</div><div class="l">账面守恒</div></div>`;
+        const total = Object.values(o.statusCounts).reduce((a, b) => a + b, 0) || 1;
+        $('statusDist').innerHTML = '<div class="muted small" style="margin-bottom:6px">订单状态分布</div>' +
+          Object.entries(o.statusCounts).map(([s, n]) => `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+              <span style="width:70px" class="small">${STATUS_LABEL[s] || s}</span>
+              <div style="flex:1;height:10px;background:#0b1220;border-radius:5px;overflow:hidden">
+                <div style="width:${n / total * 100}%;height:100%;background:var(--brand)"></div>
+              </div>
+              <span class="small muted" style="width:36px;text-align:right">${n}</span>
+            </div>`).join('');
+        $('payStatsBody').innerHTML = ov.payment.map(s => `
+          <tr><td>${BIZ_LABEL[s.bizType] || s.bizType}</td>
+          <td style="color:${s.totalAmount >= 0 ? 'var(--green)' : 'var(--red)'}">${yuan(s.totalAmount)}</td>
+          <td>${s.entryCount}</td><td>${yuan(s.todayAmount)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">暂无流水</td></tr>';
+      } catch (e) { toast(e.message, 'err'); }
+      try {
+        const h = await api('GET', '/api/health');
+        $('healthBody').innerHTML =
+          `<tr><td>ride-registry (ZK)</td><td>2181/8092</td><td>${h.registry.ok ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>` +
+          h.services.map(s => `<tr><td>${s.service}</td><td>${s.port}</td><td>${s.ok ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>`).join('');
+      } catch { $('healthBody').innerHTML = '<tr><td colspan="3" class="muted">网关不可达</td></tr>'; }
+    }
+    $('btnDashRefresh').onclick = loadDash;
+    $('btnSeed').onclick = async () => {
+      const ok = await confirmDialog('播种演示乘客/司机并充值（只增不删、幂等，不影响既有数据）。继续？', '播种');
+      if (!ok) return;
+      try {
+        const r = await aapi('POST', '/api/admin/seed');
+        toast(`播种完成：新增乘客 ${r.createdPassengers}、司机 ${r.createdDrivers}，每户充值 ${yuan(r.topupPerUser)}（幂等）`, 'ok');
+        loadDash();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+
+    // ---- 资金流水 ----
+    Object.keys(BIZ_LABEL).forEach(b => $('lBiz').insertAdjacentHTML('beforeend', `<option value="${b}">${BIZ_LABEL[b]}</option>`));
+
+    function ledgerQuery(page, size) {
+      const q = new URLSearchParams({ page, size });
+      if ($('lUser').value.trim()) q.set('userId', $('lUser').value.trim());
+      if ($('lOrder').value.trim()) q.set('orderId', $('lOrder').value.trim());
+      if ($('lBiz').value) q.set('bizType', $('lBiz').value);
+      const from = dayStartTs($('lFrom').value), to = dayEndTs($('lTo').value);
+      if (from) q.set('from', from);
+      if (to) q.set('to', to);
+      return q;
+    }
+
+    async function loadLedger(page) {
+      ledgerPage = page;
+      try {
+        const res = await aapi('GET', '/api/admin/ledger?' + ledgerQuery(page, 15));
+        $('ledgerBody').innerHTML = res.items.map(e => `
+          <tr class="clickable" data-id="${e.id}">
+            <td>${fmtTime(e.createdAt)}</td><td>${e.id}</td><td>${escapeHtml(e.userId)}</td>
+            <td>${BIZ_LABEL[e.bizType] || e.bizType}</td>
+            <td style="color:${e.amount >= 0 ? 'var(--green)' : 'var(--red)'}">${e.amount >= 0 ? '+' : ''}${yuan(e.amount)}</td>
+            <td>${yuan(e.balanceAfter)}</td><td>${e.orderId || '--'}</td>
+          </tr>`).join('') || '<tr><td colspan="7" class="muted">暂无流水</td></tr>';
+        $('ledgerBody').querySelectorAll('tr.clickable').forEach(tr =>
+          tr.onclick = () => openLedgerDetail(res.items.find(x => x.id === tr.dataset.id)));
+        renderPager($('ledgerPager'), res.page, res.size, res.total, loadLedger);
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('lSearch').onclick = () => loadLedger(1);
+
+    // 流水三件套抽屉：流水条目 + 同订单全部流水 + 关联订单/钱包快照。
+    async function openLedgerDetail(entry) {
+      const body = openDrawer('流水详情 ' + entry.id, '<div class="muted">加载中…</div>', true);
+      try {
+        const [orderLedger, wallets] = await Promise.all([
+          entry.orderId ? aapi('GET', '/api/admin/ledger?orderId=' + entry.orderId + '&size=50') : Promise.resolve(null),
+          aapi('GET', '/api/admin/wallets'),
+        ]);
+        const wallet = wallets.find(w => w.userId === entry.userId);
+        let order = null;
+        if (entry.orderId) { try { order = await api('GET', '/api/orders/' + entry.orderId); } catch { /* 订单可能不存在 */ } }
+        body.innerHTML = `
+          <h4 class="sec">本笔流水</h4>
+          <div class="kv"><span class="k">流水号 / 幂等键</span><span class="v">${entry.id}<br><span class="small muted">${escapeHtml(entry.requestId || '--')}</span></span></div>
+          <div class="kv"><span class="k">用户 / 类型</span><span class="v">${escapeHtml(entry.userId)} · ${BIZ_LABEL[entry.bizType] || entry.bizType}</span></div>
+          <div class="kv"><span class="k">金额 / 变动后余额</span><span class="v" style="color:${entry.amount >= 0 ? 'var(--green)' : 'var(--red)'}">${entry.amount >= 0 ? '+' : ''}${yuan(entry.amount)} / ${yuan(entry.balanceAfter)}</span></div>
+          <div class="kv"><span class="k">时间</span><span class="v">${fmtTime(entry.createdAt)}</span></div>
+          <h4 class="sec">该用户钱包快照</h4>
+          ${wallet ? `<div class="kv"><span class="k">当前余额</span><span class="v">${yuan(wallet.balance)}</span></div>
+          <div class="kv"><span class="k">最后动账</span><span class="v">${fmtTime(wallet.updatedAt)}</span></div>` : '<div class="muted small">钱包不存在</div>'}
+          ${entry.orderId ? `<h4 class="sec">同订单全部流水（${orderLedger ? orderLedger.total : 0} 笔）</h4>${ledgerRowsHtml(orderLedger && orderLedger.items)}` : ''}
+          ${order ? `<h4 class="sec">关联订单</h4>
+            <div class="spread">${statusBadge(order.status)}<span class="badge">${SERVICE_LABEL[order.serviceType] || '快车'}</span></div>
+            <div class="kv"><span class="k">行程</span><span class="v">${escapeHtml(order.originName || '--')} → ${escapeHtml(order.destName || '--')}</span></div>
+            <div class="kv"><span class="k">预估 / 实际</span><span class="v">${yuan(order.estimateFee)} / ${yuan(order.actualFee)}</span></div>
+            <div class="btns"><button class="ghost" id="dOrderDetail">查看完整订单</button></div>` : ''}`;
+        const b = body.querySelector('#dOrderDetail');
+        if (b) b.onclick = () => openOrderDetail(order.id, {});
+      } catch (e) { body.innerHTML = `<div class="badge err">${escapeHtml(e.message)}</div>`; }
+    }
+
+    $('btnAudit').onclick = async () => {
+      try {
+        const rows = await aapi('GET', '/api/admin/audit');
+        $('auditBox').style.display = 'block';
+        $('auditBody').innerHTML = rows.map(r => `
+          <tr><td>${escapeHtml(r.userId)}</td><td>${yuan(r.walletBalance)}</td><td>${yuan(r.ledgerSum)}</td>
+          <td style="color:${r.diff === 0 ? 'var(--muted)' : 'var(--red)'}">${yuan(r.diff)}</td><td>${r.entryCount}</td>
+          <td>${r.ok ? '<span class="badge ok">守恒</span>' : '<span class="badge err">不平</span>'}</td></tr>`).join('');
+        const bad = rows.filter(r => !r.ok).length;
+        toast(bad ? `发现 ${bad} 个账户账面不平！` : `全部 ${rows.length} 个账户账面守恒 ✔`, bad ? 'err' : 'ok');
+      } catch (e) { toast(e.message, 'err'); }
+    };
+
+    $('btnCsv').onclick = async () => {
+      try {
+        let all = [], page = 1;
+        while (page <= 10) {
+          const res = await aapi('GET', '/api/admin/ledger?' + ledgerQuery(page, 100));
+          all = all.concat(res.items);
+          if (all.length >= res.total || !res.items.length) break;
+          page++;
+        }
+        const head = '流水号,时间,用户,订单,类型,金额(分),变动后余额(分),幂等键';
+        const lines = all.map(e => [e.id, fmtTime(e.createdAt), e.userId, e.orderId || '', e.bizType, e.amount, e.balanceAfter, e.requestId || ''].join(','));
+        const blob = new Blob(['\uFEFF' + head + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `ledger-${fmtDateInput()}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast(`已导出 ${all.length} 条流水`, 'ok');
+      } catch (e) { toast(e.message, 'err'); }
+    };
+
+    // ---- 订单管理 ----
+    Object.keys(STATUS_LABEL).forEach(s => $('oStatus').insertAdjacentHTML('beforeend', `<option value="${s}">${STATUS_LABEL[s]}</option>`));
+
+    async function loadOrders(page) {
+      ordersPage = page;
+      const q = new URLSearchParams({ page, size: 15 });
+      if ($('oPassenger').value.trim()) q.set('passengerId', $('oPassenger').value.trim());
+      if ($('oDriver').value.trim()) q.set('driverId', $('oDriver').value.trim());
+      if ($('oStatus').value) q.set('status', $('oStatus').value);
+      const from = dayStartTs($('oFrom').value), to = dayEndTs($('oTo').value);
+      if (from) q.set('from', from);
+      if (to) q.set('to', to);
+      try {
+        const res = await aapi('GET', '/api/orders/query?' + q);
+        $('ordersBody').innerHTML = res.items.map(o => `
+          <tr class="clickable" data-oid="${o.id}">
+            <td>${o.id}</td><td>${escapeHtml(o.passengerName || o.passengerId)}</td>
+            <td>${o.driverName ? escapeHtml(o.driverName) : '--'}</td>
+            <td>${escapeHtml(o.originName || '--')} → ${escapeHtml(o.destName || '--')}</td>
+            <td>${statusBadge(o.status)}</td>
+            <td>${yuan(o.estimateFee)} / ${yuan(o.actualFee)}</td><td>${fmtTime(o.createdAt)}</td>
+          </tr>`).join('') || '<tr><td colspan="7" class="muted">暂无订单</td></tr>';
+        $('ordersBody').querySelectorAll('tr.clickable').forEach(tr => tr.onclick = () => adminOrderDetail(tr.dataset.oid));
+        renderPager($('ordersPager'), res.page, res.size, res.total, loadOrders);
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('oSearch').onclick = () => loadOrders(1);
+
+    function adminOrderDetail(oid) {
+      openOrderDetail(oid, {
+        extraHtml: `<h4 class="sec">管理处置</h4>
+          <div class="btns">
+            <button class="red" id="aForce">强制取消</button>
+            <button class="amber" id="aRefund">退款</button>
+          </div>
+          <p class="muted small">强制取消适用于行程中异常单；退款仅已支付订单，支持部分退款（司机/平台按比例扣回，乘客到账）。</p>`,
+        onReady: (body, o) => {
+          const force = body.querySelector('#aForce'), refund = body.querySelector('#aRefund');
+          force.disabled = !ACTIVE_STATUSES.includes(o.status);
+          refund.disabled = o.status !== 'PAID';
+          force.onclick = async () => {
+            const ok = await confirmDialog(`确认强制取消订单 <b>${o.id}</b>？行程中订单将立即关闭并释放司机。`, '强制取消');
+            if (!ok) return;
+            try {
+              await aapi('POST', `/api/admin/orders/${o.id}/force-cancel?reason=` + encodeURIComponent('管理端强制取消'));
+              toast('已强制取消 ' + o.id, 'warn'); closeDrawer(); loadOrders(ordersPage);
+            } catch (e) { toast(e.message, 'err'); }
+          };
+          refund.onclick = () => {
+            const refunded = o.refundedAmount || 0;
+            const remaining = (o.actualFee || 0) - refunded;
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.innerHTML = `
+              <div class="modal">
+                <h3 style="margin:0 0 10px">退款订单 ${o.id}</h3>
+                <div class="kv"><span class="k">实付 / 已退 / 剩余可退</span><span class="v">${yuan(o.actualFee)} / ${yuan(refunded)} / <b style="color:var(--green)">${yuan(remaining)}</b></span></div>
+                <label>本次退款金额（元，默认剩余可退）</label>
+                <input id="rfAmount" type="number" step="0.01" min="0.01" value="${(remaining / 100).toFixed(2)}">
+                <label style="margin-top:10px">退款原因</label>
+                <input id="rfReason" value="管理端退款">
+                <p class="muted small" style="margin-top:10px">乘客到账本次金额；司机/平台按比例扣回，手续费按比例退。部分退款后订单保持已支付，可继续退。</p>
+                <div class="btns" style="justify-content:flex-end">
+                  <button class="ghost" id="rfNo">取消</button>
+                  <button class="amber" id="rfOk">确认退款</button>
+                </div>
+              </div>`;
+            document.body.appendChild(overlay);
+            overlay.querySelector('#rfNo').onclick = () => overlay.remove();
+            overlay.querySelector('#rfOk').onclick = async () => {
+              const v = parseFloat(overlay.querySelector('#rfAmount').value);
+              if (!(v > 0)) return toast('退款金额需大于 0', 'warn');
+              const amount = Math.round(v * 100);
+              if (amount > remaining) return toast('退款金额超过剩余可退 ' + yuan(remaining), 'warn');
+              const reason = overlay.querySelector('#rfReason').value.trim() || '管理端退款';
+              const okBtn = overlay.querySelector('#rfOk');
+              okBtn.disabled = true;
+              try {
+                await aapi('POST', `/api/admin/orders/${o.id}/refund?reason=${encodeURIComponent(reason)}&amount=${amount}`);
+                overlay.remove();
+                toast((amount >= remaining ? '全额退款完成 ' : '部分退款完成 ') + o.id, 'ok');
+                closeDrawer(); loadOrders(ordersPage);
+              } catch (e) { toast(e.message, 'err'); okBtn.disabled = false; }
+            };
+          };
+        }
+      });
+    }
+
+    // ---- 钱包总览 ----
+    async function loadWallets() {
+      try {
+        const [wallets, audit] = await Promise.all([aapi('GET', '/api/admin/wallets'), aapi('GET', '/api/admin/audit')]);
+        const amap = Object.fromEntries(audit.map(a => [a.userId, a]));
+        $('walletsBody').innerHTML = wallets.map(w => {
+          const a = amap[w.userId] || {};
+          return `<tr>
+            <td>${escapeHtml(w.userId)}${w.userId === 'SYS_PLATFORM' ? ' <span class="badge info">平台</span>' : ''}</td>
+            <td>${yuan(w.balance)}</td><td>${yuan(a.ledgerSum)}</td>
+            <td style="color:${a.diff ? 'var(--red)' : 'var(--muted)'}">${yuan(a.diff)}</td>
+            <td>${a.entryCount ?? '--'}</td>
+            <td>${a.ok ? '<span class="badge ok">守恒</span>' : '<span class="badge err">不平</span>'}</td>
+            <td>${fmtTime(w.updatedAt)}</td></tr>`;
+        }).join('') || '<tr><td colspan="7" class="muted">暂无钱包</td></tr>';
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnWalletRefresh').onclick = loadWallets;
+
+    // ---- 系统日志 ----
+    LOG_NAMES.forEach(n => $('logFile').insertAdjacentHTML('beforeend', `<option>${n}</option>`));
+
+    async function tailLog() {
+      try {
+        const res = await aapi('GET', `/api/admin/logs?file=${$('logFile').value}&lines=${$('logLines').value}`);
+        $('logView').textContent = res.lines.join('\n') || '（日志为空）';
+        $('logView').scrollTop = $('logView').scrollHeight;
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnLogTail').onclick = tailLog;
+    $('btnLogTrace').onclick = async () => {
+      const t = $('logTrace').value.trim();
+      if (!t) return toast('请输入 traceId', 'warn');
+      try {
+        const res = await aapi('GET', '/api/admin/logs?traceId=' + encodeURIComponent(t));
+        $('logView').textContent = res.hits.length
+          ? res.hits.map(h => `[${h.file}] ${h.line}`).join('\n')
+          : '未检索到该 traceId（日志尾部 512KB 范围内）';
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    $('logAuto').onchange = e => {
+      clearInterval(logTimer);
+      if (e.target.checked) { tailLog(); logTimer = setInterval(tailLog, 5000); }
+    };
+
+    // ---- 一致性监控 ----
+    async function loadConsistency() {
+      try {
+        const [ob, dead, conns, events] = await Promise.all([
+          aapi('GET', '/api/admin/outbox'),
+          aapi('GET', '/api/admin/outbox/dead'),
+          aapi('GET', '/api/admin/push/connections'),
+          aapi('GET', '/api/admin/push/events?limit=100'),
+        ]);
+        const backlogAlert = ob.pendingCount > 0 && ob.oldestPendingAgeMs > 10000;
+        const deadAlert = (ob.deadCount || 0) > 0;
+        $('outboxStats').innerHTML = `
+          <div class="stat"><div class="n ${backlogAlert ? 'red' : ob.pendingCount > 0 ? 'amber' : 'green'}">${ob.pendingCount}</div><div class="l">待投递（积压）</div></div>
+          <div class="stat"><div class="n green">${ob.sentCount}</div><div class="l">已投递</div></div>
+          <div class="stat"><div class="n ${deadAlert ? 'red' : 'green'}">${ob.deadCount || 0}</div><div class="l">DEAD（需人工）</div></div>
+          <div class="stat"><div class="n amber">${ob.maxRetries}</div><div class="l">最大重试次数</div></div>
+          <div class="stat"><div class="n ${ob.oldestPendingAgeMs > 10000 ? 'red' : ''}">${(ob.oldestPendingAgeMs / 1000).toFixed(0)}s</div><div class="l">最老积压年龄</div></div>`;
+        $('deadBody').innerHTML = dead.map(e => `
+          <tr><td>${e.type === 'REFUND' ? '退款' : '支付'}</td><td>${e.orderId || '--'}</td>
+          <td class="small">${escapeHtml(e.requestId || '--')}</td><td>${e.retries}</td><td class="small">${fmtTime(e.createdAt)}</td>
+          <td><button class="ghost" data-key="${escapeHtml(e.requestId || e.orderId)}">重放</button></td></tr>`).join('')
+          || '<tr><td colspan="6" class="muted">无 DEAD 事件 ✔</td></tr>';
+        $('deadBody').querySelectorAll('button[data-key]').forEach(b => b.onclick = async () => {
+          const ok = await confirmDialog(`重放事件 <b>${escapeHtml(b.dataset.key)}</b>？将重置重试计数并立即重新投递（幂等，不会重复动账）。`, '重放');
+          if (!ok) return;
+          try {
+            const n = await aapi('POST', '/api/admin/outbox/replay?key=' + encodeURIComponent(b.dataset.key));
+            toast(n > 0 ? `已重放 ${n} 条事件` : '未找到可重放的 DEAD 事件', n > 0 ? 'ok' : 'warn');
+            loadConsistency();
+          } catch (e) { toast(e.message, 'err'); }
+        });
+        $('connBody').innerHTML = conns.map(c => `
+          <tr><td>${escapeHtml(c.key)}</td><td>${c.active ? '<span class="badge ok">活跃</span>' : '<span class="badge err">失效</span>'}</td>
+          <td class="small muted">${escapeHtml(c.remoteAddress)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">无在线连接</td></tr>';
+        $('pushBody').innerHTML = events.map(e => `
+          <tr><td class="small">${fmtTime(e.ts)}</td><td>${escapeHtml(e.key)}</td><td>${escapeHtml(e.event)}</td>
+          <td>${e.orderId || '--'}</td><td>${e.delivered ? '<span class="badge ok">送达</span>' : '<span class="badge warn">离线跳过</span>'}</td></tr>`).join('')
+          || '<tr><td colspan="5" class="muted">暂无推送事件（进程重启后清空）</td></tr>';
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnConsRefresh').onclick = loadConsistency;
+
+    // ---- 初始化 ----
+    if (token) {
+      api('GET', '/api/admin/overview', undefined, { 'X-Admin-Token': token })
+        .then(() => loadDash())
+        .catch(() => tokenGate());
+    } else tokenGate();
+    setInterval(() => {
+      const active = document.querySelector('.tabpane.active');
+      if (active && active.id === 'pane-consistency') loadConsistency();
+    }, 5000);
+  </script>
+</body>
+</html>

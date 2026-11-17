@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: ride-order
+  main:
+    web-application-type: none
+  datasource:
+    url: jdbc:h2:file:${DATA_DIR:./data}/order;MODE=MySQL;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
+dubbo:
+  application:
+    name: ride-order
+    qos-enable: false
+  registry:
+    address: zookeeper://127.0.0.1:${ZK_PORT:2181}
+  protocol:
+    name: dubbo
+    port: ${ORDER_DUBBO_PORT:20885}
+  provider:
+    timeout: 8000
+    retries: 0
+  consumer:
+    check: false
+    timeout: 8000
+    retries: 0
+
+# 派单调度：grab=就近广播抢单（超时扩半径改派），assign=评分 Top1 逐个指派（邀约 TTL 顺延）。
+# 超最大轮次置 EXPIRED；支付/退款对账与 BUSY 司机回收均为服务端兜底调度。
+order:
+  default-radius-km: 5.0
+  max-radius-km: 20.0
+  radius-step-km: 3.0
+  dispatch-timeout-ms: 15000
+  redispatch-interval-ms: 5000
+  reconcile-interval-ms: 5000
+  reconcile-grace-ms: 10000
+  dispatch-mode: grab
+  offer-ttl-ms: 15000
+  max-dispatch-rounds: 6
+  cancel-free-window-ms: 120000
+  cancel-fee-amount: 300
+  driver-reclaim-grace-ms: 30000
+  driver-reclaim-interval-ms: 10000
+  remind-after-ms: 60000
+  auto-pay-delay-ms: 30000
+  auto-pay-retry-ms: 60000
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n"

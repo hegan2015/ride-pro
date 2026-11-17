@@ -1,0 +1,36 @@
+server:
+  port: ${GATEWAY_PORT:8080}
+
+spring:
+  application:
+    name: ride-gateway
+  web:
+    resources:
+      static-locations: classpath:/static/
+
+dubbo:
+  application:
+    name: ride-gateway
+    qos-enable: false
+  registry:
+    address: zookeeper://127.0.0.1:${ZK_PORT:2181}
+  protocol:
+    name: dubbo
+    port: ${GATEWAY_DUBBO_PORT:20880}
+  consumer:
+    check: false
+    timeout: 8000
+    retries: 0
+
+registry:
+  health-url: http://127.0.0.1:${ZK_HTTP_PORT:8092}/health
+
+# 管理端令牌（X-Admin-Token）、行程分享 HMAC 密钥、API 单机限流（每 IP 每秒）。
+gateway:
+  admin-token: ${ADMIN_TOKEN:ride-admin}
+  share-secret: ${SHARE_SECRET:ride-share-demo-secret}
+  rate-limit-per-second: 100
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n"

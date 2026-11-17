@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ride-pro · 打车系统</title>
+  <link rel="stylesheet" href="common.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>🚕 ride-pro 打车系统</h1>
+      <div class="sub">参考滴滴领域拆分 · Spring Boot + Dubbo + Netty + H2 + 内嵌 ZooKeeper</div>
+    </div>
+    <span id="toast" class="badge" style="display:none"></span>
+  </header>
+
+  <div class="wrap">
+    <div class="hero">
+      <div class="card">
+        <div class="big">🧑 乘客端</div>
+        <div class="muted">注册 → 充值 → 选车型/起终点 → 预估价 → 叫车 → 实时接驾 → 支付 → 评价 → 订单记录</div>
+        <a href="passenger.html"><button class="block">进入乘客端</button></a>
+      </div>
+      <div class="card">
+        <div class="big">🚗 司机端</div>
+        <div class="muted">注册 → 上线听单 → 邀约倒计时/拒单 → 抢单 → 模拟驾驶/轨迹 → 结束行程 → 收入提现</div>
+        <a href="driver.html"><button class="block green">进入司机端</button></a>
+      </div>
+      <div class="card">
+        <div class="big">🛠️ 管理端</div>
+        <div class="muted">仪表盘 · 资金流水/账面核对 · 订单处置(退款/强取消) · 钱包总览 · 系统日志(traceId) · 一致性监控</div>
+        <a href="admin.html"><button class="block amber">进入管理端</button></a>
+      </div>
+    </div>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <h2><span class="dot"></span>服务健康看板</h2>
+        <div class="spread" style="margin-bottom:10px">
+          <span class="muted small">每 3 秒刷新 · 注册中心 + 8 业务域</span>
+          <span id="allOk" class="badge">检测中…</span>
+        </div>
+        <table class="health">
+          <thead><tr><th>服务</th><th>Dubbo 端口</th><th>状态</th></tr></thead>
+          <tbody id="healthBody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2><span class="dot"></span>实时长连接</h2>
+        <div class="kv"><span class="k">WebSocket 在线连接</span><span class="v" id="onlineCount">--</span></div>
+        <div class="kv"><span class="k">推送通道</span><span class="v">Netty · ws://host:9100/ws/{role}/{id}</span></div>
+        <div class="kv"><span class="k">注册中心</span><span class="v" id="regState">--</span></div>
+        <p class="muted small" style="margin-top:14px">
+          领域划分：乘客 / 司机 / 位置(LBS) / 计价 / 订单 / 派单调度 / 支付钱包 / 消息推送(Netty) / 网关。
+          订单状态机：CREATED → DISPATCHING → ACCEPTED → ARRIVED → IN_PROGRESS → COMPLETED → PAID，
+          前期可 CANCELLED（含取消费），无人接单超轮次 EXPIRED，已支付可 REFUNDED（管理端）。
+          行程分享：乘客端订单卡片「分享行程」生成 HMAC 签名链接（share.html），无需登录只读查看。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="common.js"></script>
+  <script>
+    async function refresh() {
+      try {
+        const h = await api('GET', '/api/health');
+        const body = document.getElementById('healthBody');
+        const reg = h.registry && h.registry.ok;
+        let rows = `<tr><td>ride-registry (ZK)</td><td>2181 / 8092</td><td>${reg ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>`;
+        (h.services || []).forEach(s => {
+          rows += `<tr><td>${s.service}</td><td>${s.port}</td><td>${s.ok ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>`;
+        });
+        body.innerHTML = rows;
+        const all = document.getElementById('allOk');
+        all.textContent = h.allOk ? '全部就绪' : '部分离线';
+        all.className = 'badge ' + (h.allOk ? 'ok' : 'warn');
+        document.getElementById('regState').textContent = reg ? '正常' : '离线';
+      } catch (e) {
+        document.getElementById('allOk').textContent = '网关不可达';
+        document.getElementById('allOk').className = 'badge err';
+      }
+      try {
+        const n = await api('GET', '/api/push/online');
+        document.getElementById('onlineCount').textContent = n;
+      } catch { document.getElementById('onlineCount').textContent = '--'; }
+    }
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

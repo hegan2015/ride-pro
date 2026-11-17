@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: ride-location
+  main:
+    web-application-type: none
+  datasource:
+    url: jdbc:h2:file:${DATA_DIR:./data}/location;MODE=MySQL;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
+dubbo:
+  application:
+    name: ride-location
+    qos-enable: false
+  registry:
+    address: zookeeper://127.0.0.1:${ZK_PORT:2181}
+  protocol:
+    name: dubbo
+    port: ${LOCATION_DUBBO_PORT:20883}
+  provider:
+    timeout: 5000
+    retries: 0
+  consumer:
+    check: false
+    timeout: 5000
+    retries: 0
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n"

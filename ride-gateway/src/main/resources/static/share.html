@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>行程分享 · ride-pro</title>
+  <link rel="stylesheet" href="common.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>🧾 行程分享</h1>
+      <div class="sub">HMAC 签名链接 · 只读 · 姓名已脱敏</div>
+    </div>
+    <span class="badge info" id="shareState">加载中…</span>
+  </header>
+
+  <div class="wrap" style="max-width:760px">
+    <div class="card" id="shareBox">
+      <div class="muted">正在加载行程…</div>
+    </div>
+  </div>
+
+  <script src="common.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const orderId = params.get('orderId'), token = params.get('token');
+    const box = document.getElementById('shareBox');
+    const state = document.getElementById('shareState');
+
+    (async () => {
+      if (!orderId || !token) {
+        box.innerHTML = '<div class="badge err">链接不完整：缺少 orderId 或 token</div>';
+        state.textContent = '链接无效'; state.className = 'badge err';
+        return;
+      }
+      try {
+        const res = await api('GET', `/api/share/${encodeURIComponent(orderId)}?token=${encodeURIComponent(token)}`);
+        const o = res.order, track = res.track || [];
+        state.textContent = STATUS_LABEL[o.status] || o.status;
+        state.className = 'badge ' + (STATUS_KIND[o.status] || 'info');
+        box.innerHTML = `
+          <div class="spread" style="margin-bottom:10px">
+            <span class="badge info">${o.id}</span>
+            <span class="badge">${SERVICE_LABEL[o.serviceType] || '快车'}</span>
+          </div>
+          <div class="kv"><span class="k">乘客</span><span class="v">${escapeHtml(o.passengerName || '--')}</span></div>
+          <div class="kv"><span class="k">司机</span><span class="v">${o.driverName ? escapeHtml(o.driverName) + ' · ' + escapeHtml(o.driverCarNo || '') : '未接单'}</span></div>
+          <div class="kv"><span class="k">行程</span><span class="v">${escapeHtml(o.originName || '--')} → ${escapeHtml(o.destName || '--')}</span></div>
+          <div class="kv"><span class="k">预估 / 实际</span><span class="v">${yuan(o.estimateFee)} / ${yuan(o.actualFee)}</span></div>
+          ${o.actualDistanceKm != null ? `<div class="kv"><span class="k">实际里程 / 时长</span><span class="v">${o.actualDistanceKm} km / ${o.actualDurationMin} 分钟</span></div>` : ''}
+          <h4 class="sec">行程轨迹${track.length ? `（${track.length} 点）` : '（无）'}</h4>
+          <canvas class="map big" id="shareMap"></canvas>
+          <h4 class="sec">行程时间线</h4>${timelineHtml(o)}
+          <p class="muted small" style="margin-top:16px">本页面由 ride-pro 行程分享功能生成，签名校验通过，信息脱敏展示。</p>`;
+        const m = new MapView(document.getElementById('shareMap'));
+        const markers = [];
+        if (o.originLat != null) markers.push({ lat: o.originLat, lng: o.originLng, color: '#34d399', label: '起点' });
+        if (o.destLat != null) markers.push({ lat: o.destLat, lng: o.destLng, color: '#f87171', label: '终点' });
+        if (track.length > 1) m.setPath(track, '#60a5fa');
+        m.setMarkers(markers);
+      } catch (e) {
+        box.innerHTML = `<div class="badge err">${escapeHtml(e.message)}</div>`;
+        state.textContent = '无法查看'; state.className = 'badge err';
+      }
+    })();
+  </script>
+</body>
+</html>
