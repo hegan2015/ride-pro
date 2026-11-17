@@ -20,6 +20,7 @@ import com.qoder.ride.facade.payment.WalletAuditDTO;
 import com.qoder.ride.facade.payment.WalletDTO;
 import com.qoder.ride.facade.payment.WithdrawOrderDTO;
 import com.qoder.ride.payment.client.PaymentProIntegration;
+import com.qoder.ride.payment.client.PaymentProRejectedException;
 import com.qoder.ride.payment.config.PaymentProperties;
 import com.qoder.ride.payment.dataobject.IdempotentRecordDO;
 import com.qoder.ride.payment.dataobject.LedgerEntryDO;
@@ -50,14 +51,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 钱包与资金划转。所有动账（支付/转账/退款/充值/提现）在同一本地事务内原子完成，
- * 扣款带可用余额守卫防透支，幂等键必填防重复入账，每笔落流水可审计回放；
- * 退款校验原单支付流水与累计可退余额，提现走冻结→模拟渠道异步终态的状态机。
+ * 钱包与资金划转（v1.6.0 同步回执流程）。
+ *
+ * 集成 payment-pro 时：先落 PENDING 流水并冻结出资方资金（同事务）→ 同步调用 payment-pro OpenAPI
+ * → 拿到回执后流水转 CONFIRMED、钱包才真正动账（同事务）；支付系统明确拒绝则流水 FAILED、解冻退回；
+ * 通信异常保留 PENDING，由 MirrorDispatcher 恢复任务凭幂等键续传补确认。崩溃窗口两侧均有留痕可对账。
+ *
+ * 未配置集成（standalone）：保持单本地事务原子动账，流水直接 CONFIRMED。
+ * 幂等键必填防重复入账；退款校验原单支付流水与累计可退余额；提现走冻结→模拟渠道→同步出金回执。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PaymentService {
+
+    /** 同步请求宽限期：期内由请求线程自行完成回执确认，超期未决的 PENDING 由恢复任务接管。 */
+    private static final long SYNC_GRACE_MS = 15_000L;
 
     private final WalletMapper walletMapper;
     private final LedgerMapper ledgerMapper;
@@ -69,14 +78,10 @@ public class PaymentService {
     private final PaymentProperties properties;
     private final MirrorOutboxMapper mirrorOutboxMapper;
     private final PaymentProIntegration integration;
+    private final MirrorExecutor mirrorExecutor;
 
-    /** 双账本镜像事件：与本地动账同事务写入；未配置 payment-pro 集成时不落事件，standalone 行为不变。 */
-    private void mirror(String bizType, String refKey, String userId, String orderId, long now) {
-        if (!integration.isEnabled()) {
-            return;
-        }
-        mirrorOutboxMapper.insert(new MirrorOutboxDO("M-" + bizType + "-" + refKey, bizType, refKey, userId, orderId,
-                "NEW", 0, 0L, null, null, null, now));
+    /** 一笔资金操作的借贷腿计划（amount 带符号）。 */
+    private record Leg(String userId, String orderId, String bizType, long amount) {
     }
 
     public WalletDTO topup(TopupRequest request) {
@@ -92,17 +97,10 @@ public class PaymentService {
             log.info("充值幂等命中 bizNo={}", bizNo);
             return JsonUtil.fromJson(existing.getResultJson(), WalletDTO.class);
         }
-        long now = System.currentTimeMillis();
+        List<Leg> legs = List.of(new Leg(request.getUserId(), null, "TOPUP", amount));
         try {
-            WalletDTO dto = transactionTemplate.execute(s -> {
-                walletMapper.ensure(request.getUserId(), now);
-                walletMapper.credit(request.getUserId(), amount, now);
-                recordLedger(request.getUserId(), null, "TOPUP", amount, bizNo, now);
-                WalletDTO wallet = toWallet(walletMapper.selectByUserId(request.getUserId()));
-                idempotentMapper.insert(new IdempotentRecordDO(bizNo, "TOPUP", JsonUtil.toJson(wallet), now));
-                mirror("TOPUP", bizNo, request.getUserId(), null, now);
-                return wallet;
-            });
+            String json = run("TOPUP", bizNo, request.getUserId(), null, legs);
+            WalletDTO dto = JsonUtil.fromJson(json, WalletDTO.class);
             log.info("钱包充值 userId={} amount={} balance={}", request.getUserId(), amount, dto.getBalance());
             return dto;
         } catch (DuplicateKeyException e) {
@@ -129,7 +127,7 @@ public class PaymentService {
         return walletMapper.selectAll().stream().map(this::toWallet).toList();
     }
 
-    /** 提现受理：风控校验→冻结可用余额→落提现单（ACCEPTED），模拟渠道异步驱动成功/失败终态。 */
+    /** 提现受理：风控校验→冻结可用余额→落提现单（ACCEPTED），模拟渠道异步驱动终态（终态前同步调用支付系统出金）。 */
     public WalletDTO withdraw(TopupRequest request) {
         if (request.getUserId() == null || request.getUserId().isBlank()) {
             throw new BizException(ResultCode.PARAM_ERROR, "用户 ID 必填");
@@ -175,13 +173,15 @@ public class PaymentService {
     }
 
     /**
-     * 提现终态（模拟渠道回调，WithdrawProcessor 调度）：成功=扣款+解冻+WITHDRAW 流水，
-     * 失败=仅解冻；单据 CAS 与动账同事务，崩溃后重驱动幂等。失败率按 bizNo 哈希确定性判定，重试不翻转。
+     * 提现终态（模拟渠道回调，WithdrawProcessor 调度）。
+     * 成功：先落 PENDING WITHDRAW 流水 → 同步调用 payment-pro 出金 → 回执后扣款+解冻+流水 CONFIRMED；
+     * 支付系统拒绝（如余额不足）→ 提现单 FAILED、解冻退回，不再产生"本地成功、对端无记录"的 DEAD 镜像。
+     * 失败率按 bizNo 哈希确定性判定，重试不翻转；崩溃后 PENDING 由恢复任务续传。
      */
     public void settleWithdraw(WithdrawOrderDO row) {
         long now = System.currentTimeMillis();
-        boolean fail = Math.floorMod(row.getBizNo().hashCode(), 10000) < properties.getWithdrawFailBps();
-        if (fail) {
+        boolean channelFail = Math.floorMod(row.getBizNo().hashCode(), 10000) < properties.getWithdrawFailBps();
+        if (channelFail) {
             transactionTemplate.executeWithoutResult(s -> {
                 if (withdrawOrderMapper.fail(row.getId(), "模拟渠道拒绝", now) == 0) {
                     return;
@@ -191,7 +191,9 @@ public class PaymentService {
                         JsonUtil.toJson(toWallet(walletMapper.selectByUserId(row.getUserId()))), now));
             });
             log.warn("提现失败已解冻 withdrawId={} userId={} amount={}", row.getId(), row.getUserId(), row.getAmount());
-        } else {
+            return;
+        }
+        if (!integration.isEnabled()) {
             transactionTemplate.executeWithoutResult(s -> {
                 if (withdrawOrderMapper.casStatus(row.getId(), "PROCESSING", "SUCCESS", now) == 0) {
                     return;
@@ -199,12 +201,42 @@ public class PaymentService {
                 if (walletMapper.debitAndUnfreeze(row.getUserId(), row.getAmount(), now) == 0) {
                     throw new BizException(ResultCode.CONFLICT, "提现扣款失败（冻结不足）: " + row.getId());
                 }
-                recordLedger(row.getUserId(), null, "WITHDRAW", -row.getAmount(), row.getBizNo(), now);
-                mirror("WITHDRAW", row.getBizNo(), row.getUserId(), null, now);
+                recordLedger(row.getUserId(), null, "WITHDRAW", -row.getAmount(), row.getBizNo(), now, "CONFIRMED", null);
                 idempotentMapper.merge(new IdempotentRecordDO(row.getBizNo(), "WITHDRAW",
                         JsonUtil.toJson(toWallet(walletMapper.selectByUserId(row.getUserId()))), now));
             });
             log.info("提现成功 withdrawId={} userId={} amount={}", row.getId(), row.getUserId(), row.getAmount());
+            return;
+        }
+
+        String mirrorKey = "M-WITHDRAW-" + row.getBizNo();
+        MirrorOutboxDO mirror = mirrorOutboxMapper.selectByBizNo(mirrorKey);
+        if (mirror == null) {
+            try {
+                mirror = transactionTemplate.execute(s -> {
+                    recordLedger(row.getUserId(), null, "WITHDRAW", -row.getAmount(), row.getBizNo(), now, "PENDING", null);
+                    MirrorOutboxDO created = new MirrorOutboxDO(mirrorKey, "WITHDRAW", row.getBizNo(),
+                            row.getUserId(), null, "NEW", 0, now + SYNC_GRACE_MS, null, null, null, now);
+                    mirrorOutboxMapper.insert(created);
+                    return created;
+                });
+            } catch (DuplicateKeyException e) {
+                mirror = mirrorOutboxMapper.selectByBizNo(mirrorKey);
+            }
+        }
+        if (mirror == null || !"NEW".equals(mirror.getStatus())) {
+            return;
+        }
+        try {
+            String receipt = mirrorExecutor.execute(mirror);
+            confirmMirror(mirror, receipt);
+            log.info("提现成功（支付系统回执） withdrawId={} userId={} amount={} receipt={}",
+                    row.getId(), row.getUserId(), row.getAmount(), receipt);
+        } catch (PaymentProRejectedException e) {
+            failMirror(mirror, e.getMessage());
+            log.warn("提现失败（支付系统拒绝） withdrawId={} userId={}: {}", row.getId(), row.getUserId(), e.getMessage());
+        } catch (Exception e) {
+            log.warn("提现支付系统通信异常，PENDING 待恢复续传 withdrawId={}: {}", row.getId(), e.getMessage());
         }
     }
 
@@ -231,36 +263,13 @@ public class PaymentService {
         long fee = MoneyUtil.fee(amount, properties.getFeeBps());
         long driverIncome = amount - fee;
         String platform = properties.getPlatformUserId();
-        long now = System.currentTimeMillis();
+        List<Leg> legs = List.of(
+                new Leg(request.getPassengerId(), request.getOrderId(), "PAY_DEBIT", -amount),
+                new Leg(request.getDriverId(), request.getOrderId(), "PAY_CREDIT", driverIncome),
+                new Leg(platform, request.getOrderId(), "PLATFORM_FEE", fee));
         try {
-            PayResultDTO result = transactionTemplate.execute(s -> {
-                walletMapper.ensure(request.getPassengerId(), now);
-                if (walletMapper.debit(request.getPassengerId(), amount, now) == 0) {
-                    throw new BizException(ResultCode.CONFLICT, "乘客余额不足，请先充值");
-                }
-                recordLedger(request.getPassengerId(), request.getOrderId(), "PAY_DEBIT", -amount, requestId, now);
-
-                walletMapper.ensure(request.getDriverId(), now);
-                walletMapper.credit(request.getDriverId(), driverIncome, now);
-                recordLedger(request.getDriverId(), request.getOrderId(), "PAY_CREDIT", driverIncome, requestId, now);
-
-                walletMapper.ensure(platform, now);
-                walletMapper.credit(platform, fee, now);
-                recordLedger(platform, request.getOrderId(), "PLATFORM_FEE", fee, requestId, now);
-
-                long passengerBalance = walletMapper.selectByUserId(request.getPassengerId()).getBalance();
-                PayResultDTO dto = new PayResultDTO();
-                dto.setOrderId(request.getOrderId());
-                dto.setAmount(amount);
-                dto.setFee(fee);
-                dto.setDriverIncome(driverIncome);
-                dto.setPassengerBalance(passengerBalance);
-                dto.setRepeated(false);
-                idempotentMapper.insert(new IdempotentRecordDO(requestId, "PAY", JsonUtil.toJson(dto), now));
-                outboxMapper.insert(new PayOutboxDO(request.getOrderId(), requestId, "NEW", 0, 0L, now));
-                mirror("PAY", requestId, request.getPassengerId(), request.getOrderId(), now);
-                return dto;
-            });
+            PayResultDTO result = JsonUtil.fromJson(run("PAY", requestId, request.getPassengerId(), request.getOrderId(), legs),
+                    PayResultDTO.class);
             log.info("行程支付 orderId={} amount={} fee={} driverIncome={} passengerBalance={}",
                     request.getOrderId(), amount, fee, driverIncome, result.getPassengerBalance());
             return result;
@@ -269,7 +278,7 @@ public class PaymentService {
         }
     }
 
-    /** 通用原子转账（取消费等）：from 余额守卫扣款 + to 入账 + 双流水 + 幂等，同事务。 */
+    /** 通用原子转账（取消费等）：from 扣款 + to 入账 + 双流水 + 幂等。 */
     public PayResultDTO transfer(TransferRequest request) {
         if (request.getFromUserId() == null || request.getToUserId() == null) {
             throw new BizException(ResultCode.PARAM_ERROR, "转出/转入用户 ID 必填");
@@ -289,29 +298,12 @@ public class PaymentService {
             repeated.setRepeated(true);
             return repeated;
         }
-        long now = System.currentTimeMillis();
+        List<Leg> legs = List.of(
+                new Leg(request.getFromUserId(), request.getOrderId(), bizType + "_DEBIT", -amount),
+                new Leg(request.getToUserId(), request.getOrderId(), bizType + "_CREDIT", amount));
         try {
-            PayResultDTO result = transactionTemplate.execute(s -> {
-                walletMapper.ensure(request.getFromUserId(), now);
-                if (walletMapper.debit(request.getFromUserId(), amount, now) == 0) {
-                    throw new BizException(ResultCode.CONFLICT, "转出方余额不足");
-                }
-                recordLedger(request.getFromUserId(), request.getOrderId(), bizType + "_DEBIT", -amount, requestId, now);
-                walletMapper.ensure(request.getToUserId(), now);
-                walletMapper.credit(request.getToUserId(), amount, now);
-                recordLedger(request.getToUserId(), request.getOrderId(), bizType + "_CREDIT", amount, requestId, now);
-
-                PayResultDTO dto = new PayResultDTO();
-                dto.setOrderId(request.getOrderId());
-                dto.setAmount(amount);
-                dto.setFee(0L);
-                dto.setDriverIncome(amount);
-                dto.setPassengerBalance(walletMapper.selectByUserId(request.getFromUserId()).getBalance());
-                dto.setRepeated(false);
-                idempotentMapper.insert(new IdempotentRecordDO(requestId, "TRANSFER", JsonUtil.toJson(dto), now));
-                mirror("TRANSFER", requestId, request.getFromUserId(), request.getOrderId(), now);
-                return dto;
-            });
+            PayResultDTO result = JsonUtil.fromJson(run("TRANSFER", requestId, request.getFromUserId(), request.getOrderId(), legs),
+                    PayResultDTO.class);
             log.info("资金划转 bizType={} orderId={} from={} to={} amount={}",
                     bizType, request.getOrderId(), request.getFromUserId(), request.getToUserId(), amount);
             return result;
@@ -321,9 +313,9 @@ public class PaymentService {
     }
 
     /**
-     * 退款（支持部分退款）：事务内先校验原单支付流水与累计可退余额（杜绝退未付单/超退），
+     * 退款（支持部分退款）：先校验原单支付流水与累计可退余额（杜绝退未付单/超退），
      * 抽成按退款额占原支付额比例折算（可显式覆盖）；司机余额不足时按可用余额部分追回，
-     * 缺口由平台兜底，保证乘客本次退款全额到账；事件与划转同事务落 refund_outbox。
+     * 缺口由平台兜底，保证乘客本次退款全额到账。集成模式下出资腿先冻结，回执确认后动账。
      */
     public PayResultDTO refund(RefundRequest request) {
         if (request.getOrderId() == null || request.getPassengerId() == null || request.getDriverId() == null) {
@@ -341,63 +333,42 @@ public class PaymentService {
             return repeated;
         }
         String platform = properties.getPlatformUserId();
-        long now = System.currentTimeMillis();
+        LedgerEntryDO debit = ledgerMapper.selectByOrderAndBizType(request.getOrderId(), "PAY_DEBIT");
+        if (debit == null) {
+            throw new BizException(ResultCode.CONFLICT, "订单无支付流水，不可退款: " + request.getOrderId());
+        }
+        long paidAmount = -debit.getAmount();
+        long refunded = ledgerMapper.sumRefundCredit(request.getOrderId());
+        if (amount > paidAmount - refunded) {
+            throw new BizException(ResultCode.CONFLICT,
+                    "退款金额超过可退余额: 本次=" + amount + " 可退=" + (paidAmount - refunded));
+        }
+        LedgerEntryDO feeEntry = ledgerMapper.selectByOrderAndBizType(request.getOrderId(), "PLATFORM_FEE");
+        long originalFee = feeEntry == null ? 0 : feeEntry.getAmount();
+        long fee = request.getFee() != null ? request.getFee()
+                : Math.round(originalFee * (double) amount / paidAmount);
+        if (fee < 0 || fee > amount) {
+            throw new BizException(ResultCode.PARAM_ERROR, "退款抽成非法: " + fee);
+        }
+        long driverIncome = amount - fee;
+
+        walletMapper.ensure(request.getDriverId(), System.currentTimeMillis());
+        WalletDO driverWallet = walletMapper.selectByUserId(request.getDriverId());
+        long driverAvailable = driverWallet.getBalance() - driverWallet.getFrozenAmount();
+        long driverClawback = Math.min(driverIncome, Math.max(0, driverAvailable));
+        long platformPart = amount - driverClawback;
+
+        List<Leg> legs = new ArrayList<>();
+        if (driverClawback > 0) {
+            legs.add(new Leg(request.getDriverId(), request.getOrderId(), "REFUND_DEBIT", -driverClawback));
+        }
+        if (platformPart > 0) {
+            legs.add(new Leg(platform, request.getOrderId(), "REFUND_FEE_DEBIT", -platformPart));
+        }
+        legs.add(new Leg(request.getPassengerId(), request.getOrderId(), "REFUND_CREDIT", amount));
         try {
-            PayResultDTO result = transactionTemplate.execute(s -> {
-                LedgerEntryDO debit = ledgerMapper.selectByOrderAndBizType(request.getOrderId(), "PAY_DEBIT");
-                if (debit == null) {
-                    throw new BizException(ResultCode.CONFLICT, "订单无支付流水，不可退款: " + request.getOrderId());
-                }
-                long paidAmount = -debit.getAmount();
-                long refunded = ledgerMapper.sumRefundCredit(request.getOrderId());
-                if (amount > paidAmount - refunded) {
-                    throw new BizException(ResultCode.CONFLICT,
-                            "退款金额超过可退余额: 本次=" + amount + " 可退=" + (paidAmount - refunded));
-                }
-                LedgerEntryDO feeEntry = ledgerMapper.selectByOrderAndBizType(request.getOrderId(), "PLATFORM_FEE");
-                long originalFee = feeEntry == null ? 0 : feeEntry.getAmount();
-                long fee = request.getFee() != null ? request.getFee()
-                        : Math.round(originalFee * (double) amount / paidAmount);
-                if (fee < 0 || fee > amount) {
-                    throw new BizException(ResultCode.PARAM_ERROR, "退款抽成非法: " + fee);
-                }
-                long driverIncome = amount - fee;
-
-                walletMapper.ensure(request.getDriverId(), now);
-                walletMapper.ensure(platform, now);
-                walletMapper.ensure(request.getPassengerId(), now);
-
-                WalletDO driverWallet = walletMapper.selectByUserId(request.getDriverId());
-                long driverAvailable = driverWallet.getBalance() - driverWallet.getFrozenAmount();
-                long driverClawback = Math.min(driverIncome, Math.max(0, driverAvailable));
-                long platformPart = amount - driverClawback;
-                if (driverClawback > 0) {
-                    if (walletMapper.debit(request.getDriverId(), driverClawback, now) == 0) {
-                        throw new BizException(ResultCode.CONFLICT, "司机退款扣回失败");
-                    }
-                    recordLedger(request.getDriverId(), request.getOrderId(), "REFUND_DEBIT", -driverClawback, requestId, now);
-                }
-                if (platformPart > 0) {
-                    if (walletMapper.debit(platform, platformPart, now) == 0) {
-                        throw new BizException(ResultCode.CONFLICT, "平台余额不足，无法兜底退款");
-                    }
-                    recordLedger(platform, request.getOrderId(), "REFUND_FEE_DEBIT", -platformPart, requestId, now);
-                }
-                walletMapper.credit(request.getPassengerId(), amount, now);
-                recordLedger(request.getPassengerId(), request.getOrderId(), "REFUND_CREDIT", amount, requestId, now);
-
-                PayResultDTO dto = new PayResultDTO();
-                dto.setOrderId(request.getOrderId());
-                dto.setAmount(amount);
-                dto.setFee(platformPart);
-                dto.setDriverIncome(driverClawback);
-                dto.setPassengerBalance(walletMapper.selectByUserId(request.getPassengerId()).getBalance());
-                dto.setRepeated(false);
-                idempotentMapper.insert(new IdempotentRecordDO(requestId, "REFUND", JsonUtil.toJson(dto), now));
-                refundOutboxMapper.insert(new RefundOutboxDO(requestId, request.getOrderId(), "NEW", 0, 0L, now));
-                mirror("REFUND", requestId, request.getPassengerId(), request.getOrderId(), now);
-                return dto;
-            });
+            PayResultDTO result = JsonUtil.fromJson(run("REFUND", requestId, request.getPassengerId(), request.getOrderId(), legs),
+                    PayResultDTO.class);
             log.info("订单退款 orderId={} requestId={} amount={} driverClawback={} platformPart={} passengerBalance={}",
                     request.getOrderId(), requestId, amount, result.getDriverIncome(), result.getFee(), result.getPassengerBalance());
             return result;
@@ -406,12 +377,173 @@ public class PaymentService {
         }
     }
 
-    /** PAY_DEBIT 流水与扣款同事务提交，流水存在即该订单的钱已划转。 */
+    /**
+     * 资金操作统一入口：standalone 单事务原子动账；集成模式走 PENDING→同步调用→回执确认。
+     * 返回幂等记录中的结果 JSON。DuplicateKeyException 透传给调用方做幂等回读。
+     */
+    private String run(String bizType, String refKey, String userId, String orderId, List<Leg> legs) {
+        long now = System.currentTimeMillis();
+        if (!integration.isEnabled()) {
+            return transactionTemplate.execute(s -> {
+                applyLegs(legs, refKey, now);
+                String json = buildResultJson(bizType, userId, orderId, legs);
+                idempotentMapper.insert(new IdempotentRecordDO(refKey, bizType, json, now));
+                insertDomainOutbox(bizType, refKey, orderId, now);
+                return json;
+            });
+        }
+        MirrorOutboxDO mirror = transactionTemplate.execute(s -> {
+            idempotentMapper.insert(new IdempotentRecordDO(refKey, bizType, null, now));
+            for (Leg leg : legs) {
+                walletMapper.ensure(leg.userId(), now);
+                if (leg.amount() < 0 && walletMapper.freeze(leg.userId(), -leg.amount(), now) == 0) {
+                    throw new BizException(ResultCode.CONFLICT, "可用余额不足: " + leg.userId());
+                }
+                recordLedger(leg.userId(), leg.orderId(), leg.bizType(), leg.amount(), refKey, now, "PENDING", null);
+            }
+            MirrorOutboxDO created = new MirrorOutboxDO("M-" + bizType + "-" + refKey, bizType, refKey, userId, orderId,
+                    "NEW", 0, now + SYNC_GRACE_MS, null, null, null, now);
+            mirrorOutboxMapper.upsert(created);
+            return created;
+        });
+        try {
+            String receipt = mirrorExecutor.execute(mirror);
+            confirmMirror(mirror, receipt);
+            return idempotentMapper.selectByRequestId(refKey).getResultJson();
+        } catch (PaymentProRejectedException e) {
+            failMirror(mirror, e.getMessage());
+            log.warn("资金操作被支付系统拒绝 bizType={} refKey={}: {}", bizType, refKey, e.getMessage());
+            throw new BizException(ResultCode.CONFLICT, "支付系统拒绝: " + e.getMessage());
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("支付系统通信异常，PENDING 待恢复续传 bizType={} refKey={}: {}", bizType, refKey, e.getMessage());
+            throw new BizException(ResultCode.CONFLICT,
+                    "支付系统通信异常，流水已受理（PENDING），后台将自动续传确认: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 回执确认（同步路径与恢复路径共用）：PENDING 流水逐腿动账转 CONFIRMED、回填余额与回执号，
+     * 镜像置 SENT，支付/退款落域 outbox 通知订单域，提现单转 SUCCESS，幂等结果回填。
+     * 以镜像状态 NEW 为 CAS 守卫，保证只确认一次。
+     */
+    public void confirmMirror(MirrorOutboxDO row, String receipt) {
+        long now = System.currentTimeMillis();
+        transactionTemplate.executeWithoutResult(s -> {
+            MirrorOutboxDO current = mirrorOutboxMapper.selectByBizNo(row.getBizNo());
+            if (current == null || !"NEW".equals(current.getStatus())) {
+                return;
+            }
+            List<LedgerEntryDO> legs = mirrorExecutor.pendingLegs(row.getRefKey());
+            List<Leg> plan = new ArrayList<>();
+            for (LedgerEntryDO leg : legs) {
+                if (leg.getAmount() < 0) {
+                    if (walletMapper.debitAndUnfreeze(leg.getUserId(), -leg.getAmount(), now) == 0) {
+                        throw new BizException(ResultCode.CONFLICT, "回执确认扣款失败（冻结不足）: " + leg.getUserId());
+                    }
+                } else if (leg.getAmount() > 0) {
+                    walletMapper.ensure(leg.getUserId(), now);
+                    walletMapper.credit(leg.getUserId(), leg.getAmount(), now);
+                }
+                long balance = walletMapper.selectByUserId(leg.getUserId()).getBalance();
+                ledgerMapper.confirm(leg.getId(), balance, receipt);
+                plan.add(new Leg(leg.getUserId(), leg.getOrderId(), leg.getBizType(), leg.getAmount()));
+            }
+            mirrorOutboxMapper.markSent(row.getBizNo());
+            insertDomainOutbox(row.getBizType(), row.getRefKey(), row.getOrderId(), now);
+            if ("WITHDRAW".equals(row.getBizType())) {
+                WithdrawOrderDO withdraw = withdrawOrderMapper.selectByBizNo(row.getRefKey());
+                if (withdraw != null) {
+                    withdrawOrderMapper.casStatus(withdraw.getId(), "PROCESSING", "SUCCESS", now);
+                }
+            }
+            idempotentMapper.merge(new IdempotentRecordDO(row.getRefKey(), row.getBizType(),
+                    buildResultJson(row.getBizType(), row.getUserId(), row.getOrderId(), plan), now));
+        });
+        log.info("支付系统回执确认 bizNo={} type={} receipt={}", row.getBizNo(), row.getBizType(), receipt);
+    }
+
+    /** 支付系统明确拒绝：解冻出资腿、流水 FAILED、镜像 FAILED、清除幂等占位允许重试；提现单转 FAILED。 */
+    public void failMirror(MirrorOutboxDO row, String error) {
+        long now = System.currentTimeMillis();
+        transactionTemplate.executeWithoutResult(s -> {
+            MirrorOutboxDO current = mirrorOutboxMapper.selectByBizNo(row.getBizNo());
+            if (current == null || !"NEW".equals(current.getStatus())) {
+                return;
+            }
+            rollbackLocal(row, now);
+            mirrorOutboxMapper.markFailed(row.getBizNo(), truncate(error));
+        });
+        log.warn("资金操作终态失败 bizNo={} type={}: {}", row.getBizNo(), row.getBizType(), truncate(error));
+    }
+
+    /** 管理端人工关闭 DEAD 事件：本地 PENDING 同样退回（解冻+流水 FAILED），镜像置 CLOSED 留痕原因。 */
+    public int abandonMirror(String bizNo, String reason) {
+        MirrorOutboxDO row = mirrorOutboxMapper.selectByBizNo(bizNo);
+        if (row == null || !"DEAD".equals(row.getStatus())) {
+            return 0;
+        }
+        long now = System.currentTimeMillis();
+        transactionTemplate.executeWithoutResult(s -> {
+            rollbackLocal(row, now);
+            mirrorOutboxMapper.close(bizNo, reason);
+        });
+        log.warn("镜像 DEAD 人工关闭并退回本地 bizNo={} reason={}", bizNo, reason);
+        return 1;
+    }
+
+    private void rollbackLocal(MirrorOutboxDO row, long now) {
+        for (LedgerEntryDO leg : ledgerMapper.selectByRequestId(row.getRefKey())) {
+            if (!"PENDING".equals(leg.getStatus())) {
+                continue;
+            }
+            if (leg.getAmount() < 0) {
+                walletMapper.unfreeze(leg.getUserId(), -leg.getAmount(), now);
+            }
+            ledgerMapper.fail(leg.getId());
+        }
+        if ("WITHDRAW".equals(row.getBizType())) {
+            WithdrawOrderDO withdraw = withdrawOrderMapper.selectByBizNo(row.getRefKey());
+            if (withdraw != null) {
+                withdrawOrderMapper.fail(withdraw.getId(), "支付系统拒绝出金", now);
+            }
+            idempotentMapper.merge(new IdempotentRecordDO(row.getRefKey(), "WITHDRAW",
+                    JsonUtil.toJson(toWallet(walletMapper.selectByUserId(row.getUserId()))), now));
+        } else {
+            idempotentMapper.deletePending(row.getRefKey());
+        }
+    }
+
+    /** standalone 动账：出资腿可用余额守卫扣款，入账腿贷记，流水直接 CONFIRMED。 */
+    private void applyLegs(List<Leg> legs, String refKey, long now) {
+        for (Leg leg : legs) {
+            walletMapper.ensure(leg.userId(), now);
+            if (leg.amount() < 0) {
+                if (walletMapper.debit(leg.userId(), -leg.amount(), now) == 0) {
+                    throw new BizException(ResultCode.CONFLICT, "可用余额不足: " + leg.userId());
+                }
+            } else if (leg.amount() > 0) {
+                walletMapper.credit(leg.userId(), leg.amount(), now);
+            }
+            recordLedger(leg.userId(), leg.orderId(), leg.bizType(), leg.amount(), refKey, now, "CONFIRMED", null);
+        }
+    }
+
+    private void insertDomainOutbox(String bizType, String refKey, String orderId, long now) {
+        if ("PAY".equals(bizType)) {
+            outboxMapper.insert(new PayOutboxDO(orderId, refKey, "NEW", 0, 0L, now));
+        } else if ("REFUND".equals(bizType)) {
+            refundOutboxMapper.insert(new RefundOutboxDO(refKey, orderId, "NEW", 0, 0L, now));
+        }
+    }
+
+    /** PAY_DEBIT 流水与扣款同事务提交（仅 CONFIRMED），流水存在即该订单的钱已划转。 */
     public boolean isPaid(String orderId) {
         return ledgerMapper.countPayDebit(orderId) > 0;
     }
 
-    /** REFUND_CREDIT 流水与退款划转同事务提交，流水在即退款已到账。 */
+    /** REFUND_CREDIT 流水与退款划转同事务提交（仅 CONFIRMED），流水在即退款已到账。 */
     public boolean isRefunded(String orderId) {
         return ledgerMapper.countRefundCredit(orderId) > 0;
     }
@@ -453,7 +585,7 @@ public class PaymentService {
         return PageDTO.of(items, total, page, size);
     }
 
-    /** 账面核对：wallet 余额应等于该户全部流水之和（每笔动账必落流水）。 */
+    /** 账面核对：wallet 余额应等于该户全部 CONFIRMED 流水之和（每笔动账必落流水）。 */
     public List<WalletAuditDTO> audit() {
         Map<String, long[]> sums = new HashMap<>();
         for (Map<String, Object> row : ledgerMapper.sumByUser()) {
@@ -531,7 +663,8 @@ public class PaymentService {
         return count;
     }
 
-    private void recordLedger(String userId, String orderId, String bizType, long amount, String requestId, long now) {
+    private void recordLedger(String userId, String orderId, String bizType, long amount, String requestId,
+                              long now, String status, String ppReceipt) {
         WalletDO wallet = walletMapper.selectByUserId(userId);
         LedgerEntryDO entry = new LedgerEntryDO();
         entry.setId("L" + ledgerMapper.nextId());
@@ -542,7 +675,39 @@ public class PaymentService {
         entry.setBalanceAfter(wallet.getBalance());
         entry.setRequestId(requestId);
         entry.setCreatedAt(now);
+        entry.setStatus(status);
+        entry.setPpReceipt(ppReceipt);
         ledgerMapper.insert(entry);
+    }
+
+    /** 由借贷腿计划与当前钱包构建操作结果 JSON（充值/提现=钱包视图，其余=支付结果视图）。 */
+    private String buildResultJson(String bizType, String userId, String orderId, List<Leg> legs) {
+        if ("TOPUP".equals(bizType) || "WITHDRAW".equals(bizType)) {
+            return JsonUtil.toJson(toWallet(walletMapper.selectByUserId(userId)));
+        }
+        PayResultDTO dto = new PayResultDTO();
+        dto.setOrderId(orderId);
+        dto.setRepeated(false);
+        if ("PAY".equals(bizType)) {
+            dto.setAmount(-sum(legs, "PAY_DEBIT"));
+            dto.setFee(sum(legs, "PLATFORM_FEE"));
+            dto.setDriverIncome(sum(legs, "PAY_CREDIT"));
+        } else if ("REFUND".equals(bizType)) {
+            dto.setAmount(sum(legs, "REFUND_CREDIT"));
+            dto.setFee(-sum(legs, "REFUND_FEE_DEBIT"));
+            dto.setDriverIncome(-sum(legs, "REFUND_DEBIT"));
+        } else {
+            long amount = legs.stream().filter(l -> l.amount() < 0).mapToLong(l -> -l.amount()).sum();
+            dto.setAmount(amount);
+            dto.setFee(0L);
+            dto.setDriverIncome(amount);
+        }
+        dto.setPassengerBalance(walletMapper.selectByUserId(userId).getBalance());
+        return JsonUtil.toJson(dto);
+    }
+
+    private long sum(List<Leg> legs, String bizType) {
+        return legs.stream().filter(l -> l.bizType().equals(bizType)).mapToLong(Leg::amount).sum();
     }
 
     private WalletDTO repeatedWallet(String bizNo) {
@@ -609,6 +774,8 @@ public class PaymentService {
         dto.setBalanceAfter(entry.getBalanceAfter());
         dto.setRequestId(entry.getRequestId());
         dto.setCreatedAt(entry.getCreatedAt());
+        dto.setStatus(entry.getStatus());
+        dto.setPpReceipt(entry.getPpReceipt());
         return dto;
     }
 
@@ -624,5 +791,12 @@ public class PaymentService {
         if (amount > limit) {
             throw new BizException(ResultCode.CONFLICT, biz + "超出单笔限额: " + amount + " > " + limit);
         }
+    }
+
+    private static String truncate(String message) {
+        if (message == null) {
+            return "unknown";
+        }
+        return message.length() <= 256 ? message : message.substring(0, 256);
     }
 }

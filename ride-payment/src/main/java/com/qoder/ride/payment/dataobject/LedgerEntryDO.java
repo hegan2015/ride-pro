@@ -13,4 +13,7 @@ public class LedgerEntryDO {
     private Long balanceAfter;
     private String requestId;
     private Long createdAt;
+    /** PENDING（已落流水待支付系统回执）/ CONFIRMED（回执确认已动账）/ FAILED（支付系统拒绝）。 */
+    private String status;
+    private String ppReceipt;
 }

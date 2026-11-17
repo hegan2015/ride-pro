@@ -78,7 +78,7 @@
           <button id="lSearch">查询</button>
         </div>
         <div class="table-scroll"><table class="table">
-          <thead><tr><th>时间</th><th>流水号</th><th>用户</th><th>类型</th><th>金额</th><th>变动后余额</th><th>订单</th></tr></thead>
+          <thead><tr><th>时间</th><th>流水号</th><th>用户</th><th>类型</th><th>金额</th><th>变动后余额</th><th>订单</th><th>状态</th><th>支付回执</th></tr></thead>
           <tbody id="ledgerBody"></tbody>
         </table></div>
         <div class="pager" id="ledgerPager"></div>
@@ -281,6 +281,12 @@
     };
 
     // ---- 资金流水 ----
+    function ledgerStatusBadge(status) {
+      if (status === 'CONFIRMED') return '<span style="color:var(--green)">已确认</span>';
+      if (status === 'PENDING') return '<span style="color:var(--yellow,#e6a23c)">待回执</span>';
+      if (status === 'FAILED') return '<span style="color:var(--red)">已失败</span>';
+      return escapeHtml(status || '--');
+    }
     Object.keys(BIZ_LABEL).forEach(b => $('lBiz').insertAdjacentHTML('beforeend', `<option value="${b}">${BIZ_LABEL[b]}</option>`));
 
     function ledgerQuery(page, size) {
@@ -303,8 +309,9 @@
             <td>${fmtTime(e.createdAt)}</td><td>${e.id}</td><td>${escapeHtml(e.userId)}</td>
             <td>${BIZ_LABEL[e.bizType] || e.bizType}</td>
             <td style="color:${e.amount >= 0 ? 'var(--green)' : 'var(--red)'}">${e.amount >= 0 ? '+' : ''}${yuan(e.amount)}</td>
-            <td>${yuan(e.balanceAfter)}</td><td>${e.orderId || '--'}</td>
-          </tr>`).join('') || '<tr><td colspan="7" class="muted">暂无流水</td></tr>';
+            <td>${e.status === 'CONFIRMED' ? yuan(e.balanceAfter) : '--'}</td><td>${e.orderId || '--'}</td>
+            <td>${ledgerStatusBadge(e.status)}</td><td class="small muted">${escapeHtml(e.ppReceipt || '--')}</td>
+          </tr>`).join('') || '<tr><td colspan="9" class="muted">暂无流水</td></tr>';
         $('ledgerBody').querySelectorAll('tr.clickable').forEach(tr =>
           tr.onclick = () => openLedgerDetail(res.items.find(x => x.id === tr.dataset.id)));
         renderPager($('ledgerPager'), res.page, res.size, res.total, loadLedger);

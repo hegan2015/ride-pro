@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS ledger_entry (
 CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger_entry (user_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_order ON ledger_entry (order_id);
 
+-- v1.6.0 同步回执流程：流水先落 PENDING，payment-pro 回执后转 CONFIRMED 才动账；拒绝置 FAILED。
+-- pp_receipt 记录支付系统回执号（支付单/划转 bizNo）。存量流水默认 CONFIRMED。
+ALTER TABLE ledger_entry ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'CONFIRMED';
+ALTER TABLE ledger_entry ADD COLUMN IF NOT EXISTS pp_receipt VARCHAR(64);
+
 CREATE TABLE IF NOT EXISTS idempotent_record (
     request_id  VARCHAR(64) PRIMARY KEY,
     biz_type    VARCHAR(16) NOT NULL,

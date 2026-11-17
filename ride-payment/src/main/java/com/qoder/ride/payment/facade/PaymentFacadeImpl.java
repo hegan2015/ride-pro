@@ -190,12 +190,6 @@ public class PaymentFacadeImpl implements PaymentFacade {
 
     @Override
     public Result<Integer> closeMirror(String bizNo, String reason) {
-        return FacadeSupport.execute(() -> {
-            int count = mirrorMapper.close(bizNo, reason);
-            if (count > 0) {
-                log.warn("镜像 DEAD 事件人工关闭 bizNo={} reason={}", bizNo, reason);
-            }
-            return count;
-        });
+        return FacadeSupport.execute(() -> paymentService.abandonMirror(bizNo, reason));
     }
 }

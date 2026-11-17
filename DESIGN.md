@@ -1,6 +1,19 @@
 # ride-pro 打车系统设计文档
 
-版本 v1.5.0 ｜ 2026-11-17 ｜ 状态：已实现，验证记录见 §17.0 与 §19.5
+版本 v1.7.0 ｜ 2026-11-17 ｜ 状态：已实现，验证记录见 §17.0 与 §19.6
+
+v1.7.0 变更（充值/提现升级为**资金单**，详见 §19.3 与 payment-pro DESIGN §17）：
+- **充值/提现都有交易单+支付单**：镜像由 `account.topup`/`account.withdraw`（仅账务分录）切换为 `fund.topup`/`fund.withdraw`——payment-pro 走完整 TCC 生成交易单（biz_type=TOPUP/WITHDRAW）+ 支付单（SYS_FUND 系统资金商户、fee=0、BALANCE），与商户交易 PAY 同构。回执由账务分录 id/refKey 统一改为 **pp 支付单 id**，落 `ledger.pp_receipt`。
+- **对账口径不变**：资金单账务 bizNo=支付单 id、refId=交易单 id，借贷净额与旧 account.topup/withdraw 完全一致，ride 增量核对与 pp 五方对账自然通过（资金单天然满足结算单/交易单 PAID/借贷守恒，BALANCE 免渠道_capture）。
+- **验证**：verify-integration.py **24/24**（[A]/[D] 增校验资金单 TOPUP/WITHDRAW 交易单 PAID + 支付单）；单测 **19/19**（同步回执 7，提现回执断言 pp 支付单 id）。
+
+v1.6.0 变更（双账本由异步镜像升级为**同步调用→回执→落流水**，详见 §19）：
+- **同步回执流程**：资金操作先在本地事务落 **PENDING 流水**（不动账）+ 冻结负向腿 + mirror_outbox(NEW)，随后**同步调用** payment-pro OpenAPI；拿到回执后第二个事务确认动账、流水转 **CONFIRMED** 并回填 `pp_receipt`。彻底取代 v1.5.0「先动账再异步镜像」的火忘模式。
+- **三态终局**：pp 业务拒绝（4xx）→ 流水 **FAILED** + 解冻退回（提现单同步置 FAILED，根治历史超额提现 DEAD）；通信异常/风控（不确定）→ 留 **PENDING**，MirrorDispatcher 宽限 15s 后按退避续传确认，耗尽置 DEAD 可人工重放/关闭。
+- **权威口径收紧**：isPaid/isRefunded/审计/统计/退款校验/日累计一律只认 CONFIRMED 流水；PENDING 不计入余额与对账。
+- **trade.create 幂等**：payment-pro 新增 outTradeNo（merchant_id+out_trade_no 唯一索引），重试不再产生孤儿 CREATED 单。
+- **管理端**：资金流水表新增「状态」（已确认/待回执/已失败徽章）与「支付回执」两列。
+- **验证**：verify-integration.py **22/22**（含宕机 PENDING→恢复 CONFIRMED 混沌）；单测 **19/19**（一致性 12 + 同步回执 7）。
 
 v1.5.0 变更（payment-pro 双账本集成，详见 §19）：
 - **HTTPS OpenAPI 镜像**：本地资金操作同事务写 mirror_outbox，单线程顺序镜像到 payment-pro（8443 自签证书 + HMAC 签名）；本地账本权威不变，payment-pro 宕机不影响本地资金流，恢复自动追平。
@@ -298,7 +311,7 @@ totalFee    = max(minFare, baseFee + distanceFee + timeFee + longFee)
 
 ### 7.2 流水审计
 
-`ledger_entry` 每笔充值/扣款/入账留痕，`balance_after` 为该笔后钱包余额（PaymentService.recordLedger:394-406），可按 user_id / order_id 索引回放对账。**PAY_DEBIT 流水与扣款同事务提交，流水存在即该单钱已划转**——这是对账判定依据（`isPaid`，PaymentService.java:316-318）。
+`ledger_entry` 每笔充值/扣款/入账留痕，`balance_after` 为该笔后钱包余额，可按 user_id / order_id 索引回放对账。v1.6.0 增 `status`（PENDING/CONFIRMED/FAILED，默认 CONFIRMED）与 `pp_receipt`（支付回执）两列：**集成模式下流水先落 PENDING（不动账），凭 pp 回执确认后才转 CONFIRMED 并回填 balance_after/pp_receipt**；`isPaid`/审计/统计/退款校验只认 CONFIRMED 腿（详见 §19.2）。standalone 模式仍同事务直接落 CONFIRMED。
 
 ### 7.3 充值 / 提现 / 只读钱包
 
@@ -558,8 +571,10 @@ HttpServerCodec → HttpObjectAggregator(65536) → UriCaptureHandler
 | order_id | VARCHAR(32) | 可空 | 关联订单（充值为空） |
 | biz_type | VARCHAR(32) | NOT NULL | TOPUP / WITHDRAW / PAY_DEBIT / PAY_CREDIT / PLATFORM_FEE / CANCEL_FEE_DEBIT / CANCEL_FEE_CREDIT / REFUND_DEBIT / REFUND_FEE_DEBIT / REFUND_CREDIT（v1.3.0 扩列 16→32） |
 | amount | BIGINT | NOT NULL | 带符号金额（分） |
-| balance_after | BIGINT | NOT NULL | 该笔后余额 |
+| balance_after | BIGINT | NOT NULL | 该笔后余额（仅 CONFIRMED 有效，PENDING/FAILED 前端显示 --） |
 | request_id | VARCHAR(64) | 可空 | 幂等键回溯 |
+| status | VARCHAR(16) | NOT NULL DEFAULT 'CONFIRMED' | v1.6.0：PENDING（待回执）/ CONFIRMED（已确认动账）/ FAILED（pp 拒绝退回）；权威查询只认 CONFIRMED |
+| pp_receipt | VARCHAR(64) | 可空 | v1.6.0：payment-pro 回执（充值=分录 id / 支付=ppPaymentId / 退款=RFD-键 / 提现=bizNo） |
 | created_at | BIGINT | NOT NULL | 毫秒 |
 
 **idempotent_record**（payment 库）：结构同 order 库，biz_type 为 TOPUP / WITHDRAW / PAY / TRANSFER / REFUND。
@@ -914,44 +929,59 @@ run.sh 流程：JAVA_HOME 优先 corretto-18（release=17；默认 PATH 的 java
 4. **存储扩展**：域库迁移 MySQL/PG 支持多实例水平扩展（L9），订单库按 passenger_id 分片预案。
 5. **建单/派单两阶段**：启用 CREATED 落库态（L7），拆分下单与派单事务边界。
 
-## 19. payment-pro 双账本集成（HTTPS OpenAPI 镜像，v1.5.0）
+## 19. payment-pro 双账本集成（同步调用→回执→落流水，v1.6.0；充值/提现资金单 v1.7.0）
 
 ### 19.1 模式与边界
 
-**双账本**：ride-pro 钱包仍是本地资金权威（本地事务/幂等/outbox/对账全部不变）；每笔资金操作在**同一本地事务**内追加一条 `mirror_outbox` 事件，由单线程调度器按 `created_at` 顺序镜像到 payment-pro（商户身份，HTTPS + HMAC 签名 OpenAPI）。payment-pro 宕机/镜像失败**不影响本地资金流**，恢复后自动追平。
+**双账本 + 同步回执**：ride-pro 钱包仍是本地资金权威，但每笔资金操作不再「先动账再异步镜像」，而是**先落 PENDING 流水 → 同步调用 payment-pro → 凭回执确认动账**。本地账本与 payment-pro 账户在回执确认后才同时生效，杜绝「本地已动账、pp 未到账」的窗口。
 
-- 可选集成：`config/payment-pro.properties` 不存在 → `PaymentProClient.enabled=false`，不产生任何镜像事件，ride-pro 完全 standalone（既有单测/混沌不受影响）。
-- 顺序投递保证因果：充值先于支付、支付先于退款；每步 bizNo 确定性幂等（`M-{类型}-{refKey}`，PAY 分成 `PAY-DRV-`、退款追回 `RFD-CLAW-`、退款入账 `RFD-` 前缀）。
+- 可选集成：`config/payment-pro.properties` 不存在 → `PaymentProClient.enabled=false`，走 standalone 分支（同事务直接动账 + CONFIRMED 流水 + 域 outbox，不产生镜像），既有单测/混沌不受影响。
+- 顺序与幂等：每步 bizNo 确定性（`M-{类型}-{refKey}`，PAY 分成 `PAY-DRV-`、退款追回 `RFD-CLAW-`、退款入账 `RFD-` 前缀）；pp 侧 fund.topup/fund.withdraw 按 requestId(=refKey) 幂等（支付单 request_id 唯一 + 交易单 outTradeNo 唯一）、account.transfer/post 按 bizNo 幂等、trade.create/trade.pay 按 outTradeNo 幂等，重试不重复入账。
 - 退款镜像**不走 trade.refund**：ride 退款语义是"司机追回 min(分成,可用) + 平台兜底"，与标准原路退款不同，故按本地实际借贷腿用 `account.transfer` 精确镜像。
 - 平台=商户：`SYS_PLATFORM` 直接映射入驻商户账户；payment-pro 支付手续费（fee-bps，入 SYS_FEE）是支付系统营收，核对口径中从平台净额扣除。
-- 回调仅加速展示：payment-pro 异步通知 POST `/api/callbacks/payment-pro` → `payment_pro_notify` 留痕（event+bizId 幂等）；终态以镜像回执 + 对账为准。
+- 回调仅加速展示：payment-pro 异步通知 POST `/api/callbacks/payment-pro` → `payment_pro_notify` 留痕（event+bizId 幂等）；终态以**同步回执 + 对账**为准。
 
-### 19.2 镜像语义映射
+### 19.2 同步回执三段式（run / confirmMirror / failMirror）
 
-| ride 操作 | payment-pro OpenAPI | 说明 |
+每笔集成资金操作经 `PaymentService.run(bizType, refKey, userId, orderId, legs)`：
+
+1. **阶段 A 本地事务**（不动账）：幂等占位（result_json=null）→ 确保钱包存在 + **冻结负向腿**（可用余额守卫，不足拒绝）→ 落 **PENDING 流水腿** → `mirror_outbox` upsert(NEW, nextRetryAt=now+`SYNC_GRACE_MS`=15s)。
+2. **同步执行** `MirrorExecutor.execute(row)`：按类型调 pp OpenAPI（见 §19.3），返回回执字符串。
+3. **确认事务** `confirmMirror(row, receipt)`（mirror NEW 守卫）：负向腿 `debitAndUnfreeze`（CAS 行数=0 抛错）+ 正向腿 ensure+credit → 流水 `confirm(balanceAfter, ppReceipt)` 转 CONFIRMED → mirror SENT → 域 outbox（PAY→pay_outbox / REFUND→refund_outbox）→ 提现 CAS PROCESSING→SUCCESS → 幂等结果合并。
+
+**失败分支**：
+- `PaymentProRejectedException`（HTTP 4xx 且 error 不含「风控拒绝」）= 终态业务拒绝 → `failMirror`：解冻 PENDING 负向腿 + 流水 `fail` 转 FAILED + mirror FAILED + 幂等 `deletePending`（提现单置 FAILED「支付系统拒绝出金」）。**同键重试**经 mirror upsert 把 FAILED 重置 NEW 重新驱动（旧 FAILED 腿留存，pendingLegs 只取 PENDING）。
+- 其它异常（网络/5xx/风控 B0001）= 不确定 → 留 PENDING，抛「支付系统通信异常，流水已受理（PENDING），后台将自动续传确认」；`MirrorDispatcher` 宽限期后 `selectPending` 续传 execute+confirmMirror，退避 `min(30s, 1s<<min(retries,5))`，`outboxMaxRetries` 耗尽置 DEAD。
+- 管理端 `GET /api/admin/mirror`（统计）、`/mirror/dead`、`POST /mirror/replay?key=`（重放）、`POST /mirror/close?key=&reason=`（`abandonMirror`：DEAD 守卫 → 回滚本地解冻+流水 FAILED → mirror CLOSED 销账）。
+
+**权威口径**：`ledger_entry.status` ∈ PENDING/CONFIRMED/FAILED（旧数据默认 CONFIRMED）；isPaid/isRefunded/audit/stats/退款累计校验/日累计风控全部 `AND status='CONFIRMED'`。PENDING 不计余额、不入对账。
+
+### 19.3 镜像语义映射与回执
+
+| ride 操作 | payment-pro OpenAPI | 回执（落 ledger.pp_receipt） |
 |---|---|---|
-| TOPUP | account.topup | 流水 credit 腿金额，bizNo=原充值键 |
-| PAY | trade.create → trade.pay(BALANCE) → account.transfer | 乘客扣款入商户；商户→司机净额分成；手续费留存商户。pp_order_id/pp_payment_id 落 outbox 断点续传 |
-| REFUND | account.transfer ×1~2 | 有 REFUND_DEBIT 腿先司机→商户追回，再商户→乘客全额 |
-| WITHDRAW | account.withdraw | 仅提现 SUCCESS 后镜像（D 账户 / C SYS_CASH） |
-| TRANSFER | account.transfer | 借贷腿定向划转 |
+| TOPUP | fund.topup（资金单：交易单 TOPUP + 支付单，SYS_FUND/fee=0/BALANCE） | pp 支付单 id |
+| PAY | ensureAccount(乘客/司机/平台) → trade.create(outTradeNo=refKey) → trade.pay(BALANCE) → account.transfer(PAY-DRV-) | ppPaymentId（pp_order_id/pp_payment_id 落 mirror 断点续传） |
+| REFUND | account.transfer ×1~2（RFD-CLAW- 司机追回 + RFD- 乘客入账） | `RFD-{refKey}` |
+| WITHDRAW | fund.withdraw（资金单：交易单 WITHDRAW + 支付单，D 账户 / C SYS_CASH），**成功路径同步先扣 pp 再 debitAndUnfreeze** | pp 支付单 id |
+| TRANSFER | account.transfer（借贷腿定向划转） | refKey |
 
-投递失败退避 `min(30s, 1s<<min(retries,5))`，10 次耗尽置 DEAD；管理端 `GET /api/admin/mirror`（统计）、`/mirror/dead`、`POST /mirror/replay?key=`（重放）、`POST /mirror/close?key=&reason=`（线下处理完毕销账）。
+提现受理仍只冻结（不变）；模拟渠道按 bizNo 哈希确定性失败（withdrawFailBps，不变）。集成模式下渠道成功后**同步**调 pp fund.withdraw：pp 拒绝 → 提现单 FAILED + 解冻（根治 v1.5.0 历史超额提现镜像 DEAD）；不确定 → 留 PENDING 由 WithdrawProcessor/MirrorDispatcher 续传。充值/提现资金单的账务 bizNo=pp 支付单 id、refId=pp 交易单 id（不再是 ride bizNo），ride 侧凭 outTradeNo=refKey 在 pp 交易单列表反查资金单。
 
-### 19.3 账户映射与对账口径
+### 19.4 账户映射与对账口径
 
-`payment_pro_account`（user_id→member_id/account_id）懒开户：首次镜像时 `account.open`（name=userId 服务端幂等）+ 落映射 + **pp_balance_snapshot 基线快照**（开户时 pp 余额，平台行在 trade.pay 入账前落快照防重复计入）。
+`payment_pro_account`（user_id→member_id/account_id）懒开户：首次执行时 `account.open`（name=userId 服务端幂等）+ 落映射 + **pp_balance_snapshot 基线快照**（开户时 pp 余额，平台行在 trade.pay 入账前落快照防重复计入）。
 
-PaymentMonitor 30s **增量核对**：`pp余额 == 基线快照 + 已投递(SENT)镜像的本地流水净额`（平台另扣 pp 手续费，经 trade.query 回查）。兼容接入前已有历史余额的钱包；在途镜像跳过避免竞态；历史无快照行自校准回填。另有镜像 DEAD/积压超龄告警。
+PaymentMonitor 30s **增量核对**：`pp余额 == 基线快照 + 已确认(SENT 镜像的 CONFIRMED 腿)净额`（平台另扣 pp 手续费，经 trade.query 回查）。只统计 CONFIRMED 腿，PENDING/FAILED 不计；兼容接入前历史余额；在途镜像跳过避免竞态；历史无快照行自校准回填。另有镜像 DEAD/积压超龄告警。
 
-### 19.4 HTTPS 与入驻
+### 19.5 HTTPS 与入驻
 
-payment-pro 网关双连接器：HTTP 8080（控制台）不变，新增 HTTPS 8443（run.sh 首次 keytool 自签 RSA2048/PKCS12，SAN=localhost/127.0.0.1，导出公钥 `config/payment-pro-cert.pem`）；ride-pro JDK HttpClient SSLContext 仅信任该证书。签名两侧同构：TreeMap 排序、跳过 null/sign、k=v 以 & 连接、HmacSHA256 小写 hex，timestamp ±5min。
+payment-pro 网关双连接器：HTTP 8080（控制台）不变，HTTPS 8443（run.sh 首次 keytool 自签 RSA2048/PKCS12，SAN=localhost/127.0.0.1，导出公钥 `config/payment-pro-cert.pem`）；ride-pro JDK HttpClient SSLContext 仅信任该证书。签名两侧同构：TreeMap 排序、跳过 null/sign、k=v 以 & 连接、HmacSHA256 小写 hex，timestamp ±5min。
 
-入驻三步：`payment-pro ./run.sh` → `ride-pro ./run.sh` → `ride-pro ./integrate-payment.sh`（注册/复用 ride-pro 商户、开户、拷证书、写配置）→ 重启 ride-pro 生效。
+入驻：`payment-pro ./run.sh` → `ride-pro ./integrate-payment.sh`（注册/复用 ride-pro 商户、开户、拷证书、写配置）→ `ride-pro ./run.sh`。**清库重建后须先删除旧 `config/payment-pro.properties`**（旧 merchant/account/appId 已失效，脚本检测到文件存在会跳过入驻）。
 
-### 19.5 验证记录（2026-11-17）
+### 19.6 验证记录（2026-11-17，v1.7.0）
 
-`verify-integration.py` **15/15**：充值/订单全链路支付/部分退款/提现 三方双账本增量一致、pp 交易单 PAID、回调留痕、**混沌**（停 payment-pro 本地充值正常→重启镜像追平）、ride 账面守恒 + 镜像队列清空 + payment-pro 对账全过。回归：ride-pro 单测 34/34；payment-pro smoke 79/79、verify-pro 22/22（集成改动未破坏两系统既有行为）。
+`verify-integration.py` **24/24**：[A] 充值同步回执（双账本增量一致 + 流水 CONFIRMED 带 ppReceipt + **pp 资金单 TOPUP 交易单 PAID + 支付单** + 账务流水按 refId 可见）；[B] 订单全链路支付三方收敛 + pp 交易单 PAID + 平台抽成扣手续费；[C] 部分退款司机追回+平台兜底；[D] 提现同步出金 SUCCESS + **pp 资金单 WITHDRAW 交易单 PAID + 支付单** + pp D 向流水；[E] 回调留痕；[F] **混沌**（停 pp → 充值返回 PENDING 且钱包不动账 + PENDING 留痕 → 重启续传 CONFIRMED 双账本一致）；[G] ride 账面守恒 + 镜像队列清空 + pp 对账全过（结算 outbox 异步在途，对账轮询等待收敛）。单测 **19/19**（PaymentConsistencyTest 12 + PaymentSyncReceiptTest 7：充值回执确认/拒绝终态+可重试、支付三腿确认+outbox、通信失败 PENDING→Dispatcher 恢复、提现拒绝 FAILED 解冻、提现回执 SUCCESS 断言 pp 支付单 id、退款追回+乘客入账）。管理端流水「状态/支付回执」列浏览器实测渲染真实回执（充值/提现显示 pp 支付单 id）；jar 静态资源与源码一致；三端 H5 正常加载。
 
-联调修复记录：① trade.create 直返 OrderDTO（非 {order} 包装）客户端解析修正；② 对账由绝对余额改为基线+净额增量口径（历史余额兼容）并计入 pp 手续费；③ 补齐镜像 DEAD 重放/关闭管理端点；④ 提现镜像额受 pp 侧余额约束（接入前历史收入未镜像，超额提现镜像会 DEAD 需人工处理——生产应自接入日起全量镜像）。
+联调修复记录：① 拒绝后同键重试撞 mirror_outbox 旧 FAILED 主键 → run 阶段 A 改 `upsert`（MERGE KEY(biz_no)）重置 NEW 重新驱动；② Mockito 对已 thenThrow 的 mock 重桩用 `doReturn().when()`（when() 会触发旧桩泄漏异常）；③ trade.create 增 outTradeNo 幂等消除重试孤儿单；④ 提现成功路径同步先扣 pp，pp 拒绝即 FAILED 解冻，根治历史超额提现 DEAD。

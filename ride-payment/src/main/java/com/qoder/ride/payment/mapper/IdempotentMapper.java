@@ -1,6 +1,7 @@
 package com.qoder.ride.payment.mapper;
 
 import com.qoder.ride.payment.dataobject.IdempotentRecordDO;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
@@ -19,4 +20,8 @@ public interface IdempotentMapper {
     @Insert("MERGE INTO idempotent_record(request_id,biz_type,result_json,created_at) KEY(request_id) "
             + "VALUES(#{requestId},#{bizType},#{resultJson},#{createdAt})")
     int merge(IdempotentRecordDO record);
+
+    /** 支付系统明确拒绝后清除占位，允许调用方以同一幂等键重新发起。 */
+    @Delete("DELETE FROM idempotent_record WHERE request_id=#{requestId} AND result_json IS NULL")
+    int deletePending(String requestId);
 }

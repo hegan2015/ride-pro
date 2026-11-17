@@ -110,8 +110,10 @@ public class PaymentProClient {
         return call("account.open", Map.of("name", name, "type", type));
     }
 
-    public void topup(String accountId, long amount, String bizNo) {
-        call("account.topup", Map.of("accountId", accountId, "amount", amount, "bizNo", bizNo));
+    /** 充值资金单（交易单+支付单，SYS_FUND 无手续费），返回支付单 ID 作回执。 */
+    public String topup(String accountId, long amount, String bizNo) {
+        return call("fund.topup", Map.of("accountId", accountId, "amount", amount, "bizNo", bizNo))
+                .get("payment").get("id").asText();
     }
 
     public void transfer(String fromAccountId, String toAccountId, long amount, String bizNo, String subject) {
@@ -119,16 +121,22 @@ public class PaymentProClient {
                 "amount", amount, "bizNo", bizNo, "subject", subject));
     }
 
-    public void withdraw(String accountId, long amount, String bizNo) {
-        call("account.withdraw", Map.of("accountId", accountId, "amount", amount, "bizNo", bizNo));
+    /** 提现资金单（交易单+支付单，SYS_FUND 无手续费），返回支付单 ID 作回执。 */
+    public String withdraw(String accountId, long amount, String bizNo) {
+        return call("fund.withdraw", Map.of("accountId", accountId, "amount", amount, "bizNo", bizNo))
+                .get("payment").get("id").asText();
     }
 
     public long balance(String accountId) {
         return call("account.balance", Map.of("accountId", accountId)).asLong();
     }
 
-    public String tradeCreate(String subject, long amount) {
-        return call("trade.create", Map.of("subject", subject, "amount", amount)).get("id").asText();
+    public String tradeCreate(String subject, long amount, String outTradeNo) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("subject", subject);
+        params.put("amount", amount);
+        params.put("outTradeNo", outTradeNo);
+        return call("trade.create", params).get("id").asText();
     }
 
     public String tradePay(String ppOrderId, String accountId, String outTradeNo, String callbackUrl) {
@@ -163,6 +171,12 @@ public class PaymentProClient {
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             JsonNode node = mapper.readTree(response.body());
             if (response.statusCode() != 200 || node.has("error")) {
+                String error = node.has("error") ? node.get("error").asText() : response.body();
+                // 4xx 业务拒绝为终态（风控限流除外，属瞬时可重试）；其余按通信异常走恢复重试
+                if (response.statusCode() >= 400 && response.statusCode() < 500
+                        && node.has("error") && !error.contains("风控拒绝")) {
+                    throw new PaymentProRejectedException("HTTP " + response.statusCode() + " " + response.body());
+                }
                 throw new RuntimeException("HTTP " + response.statusCode() + " " + response.body());
             }
             return node;

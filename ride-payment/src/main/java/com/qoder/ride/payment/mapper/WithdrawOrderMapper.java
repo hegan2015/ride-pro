@@ -22,6 +22,9 @@ public interface WithdrawOrderMapper {
     @Select("SELECT * FROM withdraw_order WHERE user_id=#{userId} ORDER BY created_at DESC, id DESC")
     List<WithdrawOrderDO> selectByUser(String userId);
 
+    @Select("SELECT * FROM withdraw_order WHERE biz_no=#{bizNo}")
+    WithdrawOrderDO selectByBizNo(String bizNo);
+
     @Select("SELECT * FROM withdraw_order WHERE status=#{status} ORDER BY created_at LIMIT #{limit}")
     List<WithdrawOrderDO> selectByStatus(@Param("status") String status, @Param("limit") int limit);
 

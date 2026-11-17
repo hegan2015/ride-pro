@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-# ride-pro × payment-pro 双账本集成验证（HTTPS OpenAPI 镜像）
+# ride-pro × payment-pro 双账本集成验证（v1.6.0 同步回执流程）
 # 前置：两系统均已启动，且已执行 ./integrate-payment.sh 并重启 ride-pro。
-# 口径：增量比对——操作前后 ride 钱包变化量 == payment-pro 账户变化量（兼容接入前历史余额）。
-# 覆盖：充值/订单支付/部分退款/提现 双账本收敛 + 回调留痕 + payment-pro 宕机镜像积压恢复 + 两边对账。
+# 流程：ride 先落 PENDING 流水 → 同步调用 payment-pro → 回执后 CONFIRMED 动账；
+#       拒绝→FAILED 退回；payment-pro 宕机→PENDING 留痕，恢复后续传确认。
+# 口径：增量比对——操作前后 ride 钱包变化量 == payment-pro 账户变化量。
+# 覆盖：充值/订单支付/部分退款/提现 双账本收敛 + 回执流水 + 回调留痕 + 宕机 PENDING 恢复 + 两边对账。
 import json
 import os
 import subprocess
@@ -126,11 +128,24 @@ def main():
     p = passengers[0]["id"]
     d = next((x["id"] for x in drivers if x.get("serviceType") == "EXPRESS"), drivers[0]["id"])
 
-    print(f"[A] 充值镜像：乘客 {p} 充值 100000")
+    print(f"[A] 充值同步回执：乘客 {p} 充值 100000")
     base = snap(p)
     ok(RIDE, "POST", "/api/wallets/topup", {"userId": p, "amount": 100000, "bizNo": f"it-topup-{SUFFIX}"})
     dr, dp = converge(p, base, 100000)
     check("充值后双账本增量一致", dr == dp == 100000, f"rideΔ={dr} ppΔ={dp}")
+    led = ok(RIDE, "GET", f"/api/admin/ledger?userId={p}&size=50", headers=ADMIN)["items"]
+    entry = next((e for e in led if e["requestId"] == f"it-topup-{SUFFIX}"), None)
+    check("充值流水 CONFIRMED 且带支付回执", entry is not None and entry["status"] == "CONFIRMED"
+          and bool(entry.get("ppReceipt")), str(entry))
+    aid = pp_account_of(p)
+    fund_order = next((x for x in ok(PAY, "GET", "/api/orders")
+                       if x["outTradeNo"] == f"it-topup-{SUFFIX}"), None)
+    check("充值生成交易单+支付单（TOPUP/PAID）", fund_order is not None
+          and fund_order["bizType"] == "TOPUP" and fund_order["status"] == "PAID"
+          and bool(fund_order.get("paymentId")), str(fund_order))
+    entries = ok(PAY, "GET", f"/api/accounting/accounts/{aid}/entries?limit=50")
+    check("payment-pro 充值账务流水同步可见", fund_order is not None
+          and any(e["refId"] == fund_order["id"] and e["dir"] == "C" for e in entries))
 
     print("[B] 订单全链路：叫车→接单→到达→开始→完成→支付，三方双账本收敛")
     order = ok(RIDE, "POST", "/api/orders", {
@@ -174,40 +189,62 @@ def main():
     check("退款平台兜底双账本增量一致", plat_ride == plat_pp and plat_ride < 0,
           f"ride平台Δ={plat_ride} pp商户Δ={plat_pp}")
 
-    print("[D] 提现镜像：司机提现 → 模拟渠道成功 → payment-pro 出金")
+    print("[D] 提现同步出金：司机提现 → 模拟渠道 → payment-pro 回执 → SUCCESS")
     bd = snap(d)
-    # 提现额受 payment-pro 侧余额约束（接入前的历史收入未镜像，pp 余额可能小于 ride 余额）
     wd = min(1000, ride_balance(d), pp_balance(d))
     assert wd > 0, "司机无可提现余额"
-    ok(RIDE, "POST", "/api/wallets/withdraw", {"userId": d, "amount": wd, "bizNo": f"it-wd-{SUFFIX}"})
-    poll(lambda: ok(RIDE, "GET", f"/api/wallets/{d}/withdraws"),
-         lambda ws: any(w["bizNo"] == f"it-wd-{SUFFIX}" and w["status"] in ("SUCCESS", "FAILED") for w in ws))
+    # 模拟渠道按 bizNo 哈希确定性失败，失败则换新幂等键重试直至成功
+    wd_biz = None
+    for i in range(6):
+        wd_biz = f"it-wd-{SUFFIX}-{i}"
+        ok(RIDE, "POST", "/api/wallets/withdraw", {"userId": d, "amount": wd, "bizNo": wd_biz})
+        ws = poll(lambda: ok(RIDE, "GET", f"/api/wallets/{d}/withdraws"),
+                  lambda ws: any(w["bizNo"] == wd_biz and w["status"] in ("SUCCESS", "FAILED") for w in ws))
+        st = next(w["status"] for w in ws if w["bizNo"] == wd_biz)
+        if st == "SUCCESS":
+            break
+    check("提现终态 SUCCESS（支付系统回执确认）", st == "SUCCESS", f"status={st}")
     dr, dp = converge(d, bd, -wd)
     check("提现后双账本增量一致", dr == dp == -wd, f"rideΔ={dr} ppΔ={dp}")
+    aid = pp_account_of(d)
+    fund_order = next((x for x in ok(PAY, "GET", "/api/orders")
+                       if x["outTradeNo"] == wd_biz), None)
+    check("提现生成交易单+支付单（WITHDRAW/PAID）", fund_order is not None
+          and fund_order["bizType"] == "WITHDRAW" and fund_order["status"] == "PAID"
+          and bool(fund_order.get("paymentId")), str(fund_order))
+    entries = ok(PAY, "GET", f"/api/accounting/accounts/{aid}/entries?limit=50")
+    check("payment-pro 提现出金流水可见", fund_order is not None
+          and any(e["refId"] == fund_order["id"] and e["dir"] == "D" for e in entries))
 
     print("[E] 回调留痕：payment-pro 异步通知送达 ride-gateway")
     time.sleep(8)
     log = open(os.path.join(ROOT, "logs", "payment.log"), encoding="utf-8", errors="ignore").read()
     check("ride 收到 payment-pro 回调留痕", "payment-pro 通知留痕" in log or "payment-pro 通知幂等命中" in log)
 
-    print("[F] 混沌：停 payment-pro → ride 充值本地不受影响 → 重启后镜像追平")
+    print("[F] 混沌：停 payment-pro → ride 充值落 PENDING 不动账 → 重启后续传回执确认")
     pp_balance_cached = pp_balance(p)
     subprocess.run([os.path.join(PAY_ROOT, "stop.sh")], cwd=PAY_ROOT, check=True, capture_output=True)
     time.sleep(2)
     base = (ride_balance(p), pp_balance_cached)
-    st, _ = req(RIDE, "POST", "/api/wallets/topup", {"userId": p, "amount": 5000, "bizNo": f"it-down-{SUFFIX}"})
-    check("payment-pro 宕机时 ride 充值正常", st == 200 and ride_balance(p) == base[0] + 5000, f"st={st}")
+    st, resp = req(RIDE, "POST", "/api/wallets/topup", {"userId": p, "amount": 5000, "bizNo": f"it-down-{SUFFIX}"})
+    check("payment-pro 宕机时充值返回处理中（PENDING）", st != 200 and "PENDING" in json.dumps(resp, ensure_ascii=False),
+          f"st={st} resp={resp}")
+    check("宕机期间钱包不动账（回执未确认）", ride_balance(p) == base[0], f"balance={ride_balance(p)} base={base[0]}")
+    led = ok(RIDE, "GET", f"/api/admin/ledger?userId={p}&size=50", headers=ADMIN)["items"]
+    check("宕机期间流水 PENDING 留痕", any(e["requestId"] == f"it-down-{SUFFIX}" and e["status"] == "PENDING" for e in led))
     subprocess.run([os.path.join(PAY_ROOT, "run.sh"), "--no-build"], cwd=PAY_ROOT, check=True, capture_output=True)
     poll(lambda: req(PAY, "GET", "/api/health")[0], lambda st: st == 200, timeout=180, interval=2)
     dr, dp = converge(p, base, 5000, timeout=120)
-    check("恢复后镜像追平双账本增量一致", dr == dp == 5000, f"rideΔ={dr} ppΔ={dp}")
+    check("恢复后续传确认双账本增量一致", dr == dp == 5000, f"rideΔ={dr} ppΔ={dp}")
+    led = ok(RIDE, "GET", f"/api/admin/ledger?userId={p}&size=50", headers=ADMIN)["items"]
+    check("恢复后流水转 CONFIRMED", any(e["requestId"] == f"it-down-{SUFFIX}" and e["status"] == "CONFIRMED" for e in led))
 
     print("[G] 两边对账：ride 账面守恒 + 镜像队列清空 + payment-pro 全量对账")
     audit = ok(RIDE, "GET", "/api/admin/audit", headers=ADMIN)
     check("ride 账面全部守恒", all(a["ok"] for a in audit), str([a for a in audit if not a["ok"]]))
     mirror = ok(RIDE, "GET", "/api/admin/mirror", headers=ADMIN)
     check("镜像队列无积压无 DEAD", mirror["pendingCount"] == 0 and mirror["deadCount"] == 0, str(mirror))
-    rep = ok(PAY, "POST", "/api/recon/run")
+    rep = poll(lambda: ok(PAY, "POST", "/api/recon/run"), lambda r: r["pass"], timeout=60, interval=2)
     check("payment-pro 对账全部通过", rep["pass"], str([c for c in rep["checks"] if not c["pass"]]))
 
     print(f"\n结果：{PASSED} 通过，{FAILED} 失败")

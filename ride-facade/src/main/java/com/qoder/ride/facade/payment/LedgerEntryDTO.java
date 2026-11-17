@@ -21,4 +21,8 @@ public class LedgerEntryDTO implements Serializable {
     private Long balanceAfter;
     private String requestId;
     private Long createdAt;
+    /** PENDING/CONFIRMED/FAILED：同步回执流程状态（standalone 恒为 CONFIRMED）。 */
+    private String status;
+    /** payment-pro 回执号（支付单 ID 或划转 bizNo）。 */
+    private String ppReceipt;
 }

@@ -89,12 +89,14 @@ class PaymentConsistencyTest {
         RefundOutboxMapper refundOutboxMapper = template.getMapper(RefundOutboxMapper.class);
         TransactionTemplate tt = new TransactionTemplate(new DataSourceTransactionManager(ds));
         properties = new PaymentProperties();
+        PaymentProClient client = new PaymentProClient("config-not-exist.properties");
+        MirrorOutboxMapper mirrorOutboxMapper = template.getMapper(MirrorOutboxMapper.class);
         PaymentProIntegration integration = new PaymentProIntegration(
-                new PaymentProClient("config-not-exist.properties"),
-                template.getMapper(PaymentProAccountMapper.class), properties);
+                client, template.getMapper(PaymentProAccountMapper.class), properties);
+        MirrorExecutor mirrorExecutor = new MirrorExecutor(mirrorOutboxMapper, ledgerMapper, integration, client, properties);
         service = new PaymentService(walletMapper, ledgerMapper, idempotentMapper, outboxMapper,
                 refundOutboxMapper, withdrawOrderMapper, tt, properties,
-                template.getMapper(MirrorOutboxMapper.class), integration);
+                mirrorOutboxMapper, integration, mirrorExecutor);
     }
 
     /** 模拟 WithdrawProcessor：受理→处理中→终态（测试里立即结算，不等渠道模拟时长）。 */

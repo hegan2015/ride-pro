@@ -87,7 +87,9 @@ public class PaymentMonitor {
         long ppFees = 0;
         for (MirrorOutboxDO mirror : mirrorMapper.selectSent()) {
             for (LedgerEntryDO leg : ledgerMapper.selectByRequestId(mirror.getRefKey())) {
-                sentNet.merge(leg.getUserId(), leg.getAmount(), Long::sum);
+                if ("CONFIRMED".equals(leg.getStatus())) {
+                    sentNet.merge(leg.getUserId(), leg.getAmount(), Long::sum);
+                }
             }
             if ("PAY".equals(mirror.getBizType()) && mirror.getPpOrderId() != null) {
                 JsonNode payment = client.tradeQuery(mirror.getPpOrderId()).get("payment");
