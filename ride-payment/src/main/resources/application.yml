@@ -37,6 +37,9 @@ dubbo:
 # 平台服务费基点（2000 = 20%），从乘客车费中抽取，司机实收 = 车费 - 服务费。
 payment:
   fee-bps: 2000
+  mirror-interval-ms: 1000
+  pro:
+    config-file: ${PAYMENT_PRO_CONFIG:./config/payment-pro.properties}
   platform-user-id: SYS_PLATFORM
   outbox-interval-ms: 1000
   outbox-max-retries: 10

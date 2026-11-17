@@ -5,6 +5,7 @@ import com.qoder.ride.common.result.Result;
 import com.qoder.ride.facade.common.PageDTO;
 import com.qoder.ride.facade.payment.LedgerEntryDTO;
 import com.qoder.ride.facade.payment.LedgerQuery;
+import com.qoder.ride.facade.payment.MirrorEventDTO;
 import com.qoder.ride.facade.payment.OutboxEntryDTO;
 import com.qoder.ride.facade.payment.OutboxStatsDTO;
 import com.qoder.ride.facade.payment.PayRequest;
@@ -18,17 +19,27 @@ import com.qoder.ride.facade.payment.TransferRequest;
 import com.qoder.ride.facade.payment.WalletAuditDTO;
 import com.qoder.ride.facade.payment.WalletDTO;
 import com.qoder.ride.facade.payment.WithdrawOrderDTO;
+import com.qoder.ride.payment.config.PaymentProperties;
+import com.qoder.ride.payment.dataobject.PaymentProNotifyDO;
+import com.qoder.ride.payment.mapper.MirrorOutboxMapper;
+import com.qoder.ride.payment.mapper.PaymentProNotifyMapper;
 import com.qoder.ride.payment.service.PaymentService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboService;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.util.List;
 
+@Slf4j
 @DubboService
 @RequiredArgsConstructor
 public class PaymentFacadeImpl implements PaymentFacade {
 
     private final PaymentService paymentService;
+    private final PaymentProNotifyMapper notifyMapper;
+    private final MirrorOutboxMapper mirrorMapper;
+    private final PaymentProperties properties;
 
     @Override
     public Result<WalletDTO> topup(TopupRequest request) {
@@ -118,5 +129,73 @@ public class PaymentFacadeImpl implements PaymentFacade {
     @Override
     public Result<Integer> replayOutbox(String key) {
         return FacadeSupport.execute(() -> paymentService.replayOutbox(key));
+    }
+
+    @Override
+    public Result<Void> recordNotify(String event, String bizId, String payload) {
+        return FacadeSupport.execute(() -> {
+            try {
+                notifyMapper.insert(new PaymentProNotifyDO(event, bizId, payload, System.currentTimeMillis()));
+                log.info("payment-pro 通知留痕 event={} bizId={}", event, bizId);
+            } catch (DuplicateKeyException e) {
+                log.info("payment-pro 通知幂等命中 event={} bizId={}", event, bizId);
+            }
+            return null;
+        });
+    }
+
+    @Override
+    public Result<OutboxStatsDTO> mirrorStats() {
+        return FacadeSupport.execute(() -> {
+            OutboxStatsDTO stats = new OutboxStatsDTO();
+            stats.setPendingCount((long) mirrorMapper.countPending());
+            stats.setSentCount((long) mirrorMapper.countSent());
+            stats.setDeadCount((long) mirrorMapper.countDead());
+            stats.setMaxRetries(properties.getOutboxMaxRetries());
+            Long oldest = mirrorMapper.oldestPendingCreatedAt();
+            stats.setOldestPendingAgeMs(oldest == null ? 0L : System.currentTimeMillis() - oldest);
+            return stats;
+        });
+    }
+
+    @Override
+    public Result<List<MirrorEventDTO>> deadMirrors() {
+        return FacadeSupport.execute(() -> mirrorMapper.selectDead().stream().map(row -> {
+            MirrorEventDTO dto = new MirrorEventDTO();
+            dto.setBizNo(row.getBizNo());
+            dto.setBizType(row.getBizType());
+            dto.setRefKey(row.getRefKey());
+            dto.setUserId(row.getUserId());
+            dto.setOrderId(row.getOrderId());
+            dto.setStatus(row.getStatus());
+            dto.setRetries(row.getRetries());
+            dto.setPpOrderId(row.getPpOrderId());
+            dto.setPpPaymentId(row.getPpPaymentId());
+            dto.setLastError(row.getLastError());
+            dto.setCreatedAt(row.getCreatedAt());
+            return dto;
+        }).toList());
+    }
+
+    @Override
+    public Result<Integer> replayMirror(String bizNo) {
+        return FacadeSupport.execute(() -> {
+            int count = mirrorMapper.replay(bizNo);
+            if (count > 0) {
+                log.warn("镜像 DEAD 事件人工重放 bizNo={}", bizNo);
+            }
+            return count;
+        });
+    }
+
+    @Override
+    public Result<Integer> closeMirror(String bizNo, String reason) {
+        return FacadeSupport.execute(() -> {
+            int count = mirrorMapper.close(bizNo, reason);
+            if (count > 0) {
+                log.warn("镜像 DEAD 事件人工关闭 bizNo={} reason={}", bizNo, reason);
+            }
+            return count;
+        });
     }
 }

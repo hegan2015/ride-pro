@@ -14,3 +14,6 @@ nohup.out
 
 # 系统文件
 .DS_Store
+# payment-pro 集成凭据与环境证书（integrate-payment.sh 生成）
+config/payment-pro.properties
+config/*.pem

@@ -137,6 +137,32 @@ public class AdminController {
         return GatewaySupport.of(paymentFacade.replayOutbox(key));
     }
 
+    /** payment-pro 双账本镜像投递监控。 */
+    @GetMapping("/mirror")
+    public ResponseEntity<Object> mirrorStats() {
+        return GatewaySupport.of(paymentFacade.mirrorStats());
+    }
+
+    /** 镜像 DEAD 事件列表。 */
+    @GetMapping("/mirror/dead")
+    public ResponseEntity<Object> deadMirrors() {
+        return GatewaySupport.of(paymentFacade.deadMirrors());
+    }
+
+    /** 人工重放镜像 DEAD 事件（bizNo）。 */
+    @PostMapping("/mirror/replay")
+    public ResponseEntity<Object> replayMirror(@RequestParam String key) {
+        log.warn("管理端镜像重放 key={}", key);
+        return GatewaySupport.of(paymentFacade.replayMirror(key));
+    }
+
+    /** 人工关闭镜像 DEAD 事件（线下处理完毕后销账）。 */
+    @PostMapping("/mirror/close")
+    public ResponseEntity<Object> closeMirror(@RequestParam String key, @RequestParam String reason) {
+        log.warn("管理端镜像关闭 key={} reason={}", key, reason);
+        return GatewaySupport.of(paymentFacade.closeMirror(key, reason));
+    }
+
     @PostMapping("/orders/{id}/force-cancel")
     public ResponseEntity<Object> forceCancel(@PathVariable String id, @RequestParam(required = false) String reason) {
         log.warn("管理端强制取消请求 orderId={} reason={}", id, reason);

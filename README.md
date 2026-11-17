@@ -1,6 +1,12 @@
 # ride-pro 打车系统设计文档
 
-版本 v1.4.0 ｜ 2026-11-17 ｜ 状态：已实现，验证记录见 §17.0
+版本 v1.5.0 ｜ 2026-11-17 ｜ 状态：已实现，验证记录见 §17.0 与 §19.5
+
+v1.5.0 变更（payment-pro 双账本集成，详见 §19）：
+- **HTTPS OpenAPI 镜像**：本地资金操作同事务写 mirror_outbox，单线程顺序镜像到 payment-pro（8443 自签证书 + HMAC 签名）；本地账本权威不变，payment-pro 宕机不影响本地资金流，恢复自动追平。
+- **可选集成**：未配置 config/payment-pro.properties 时完全 standalone；integrate-payment.sh 一键入驻（商户注册/开户/证书/配置）。
+- **增量对账**：开户基线快照 + 已投递镜像净额（平台扣 pp 手续费），兼容接入前历史余额；镜像 DEAD/积压告警 + 管理端重放/关闭。
+- **验证**：verify-integration.py 15/15（含宕机混沌）；单测 34/34；payment-pro 侧 smoke 79/79、verify-pro 22/22 回归通过。
 
 v1.4.0 变更（资金安全 + 体验闭环，全部服务端兜底）：
 - **资金安全**：退款前置校验（无 PAY_DEBIT 流水不可退）+ 支付域累计可退守卫（sumRefundCredit+本次≤实付）；topup/withdraw/pay/transfer/refund 幂等键**必填**（缺省拒绝，杜绝随机 bizNo 重试双入账）；单笔/日累计/频次风控限额（payment.risk.*）。
@@ -907,3 +913,45 @@ run.sh 流程：JAVA_HOME 优先 corretto-18（release=17；默认 PATH 的 java
 3. **司乘身份绑定**：司乘登录 token + 身份绑定鉴权（L8'），杜绝任意客户端操作任意司乘 ID。
 4. **存储扩展**：域库迁移 MySQL/PG 支持多实例水平扩展（L9），订单库按 passenger_id 分片预案。
 5. **建单/派单两阶段**：启用 CREATED 落库态（L7），拆分下单与派单事务边界。
+
+## 19. payment-pro 双账本集成（HTTPS OpenAPI 镜像，v1.5.0）
+
+### 19.1 模式与边界
+
+**双账本**：ride-pro 钱包仍是本地资金权威（本地事务/幂等/outbox/对账全部不变）；每笔资金操作在**同一本地事务**内追加一条 `mirror_outbox` 事件，由单线程调度器按 `created_at` 顺序镜像到 payment-pro（商户身份，HTTPS + HMAC 签名 OpenAPI）。payment-pro 宕机/镜像失败**不影响本地资金流**，恢复后自动追平。
+
+- 可选集成：`config/payment-pro.properties` 不存在 → `PaymentProClient.enabled=false`，不产生任何镜像事件，ride-pro 完全 standalone（既有单测/混沌不受影响）。
+- 顺序投递保证因果：充值先于支付、支付先于退款；每步 bizNo 确定性幂等（`M-{类型}-{refKey}`，PAY 分成 `PAY-DRV-`、退款追回 `RFD-CLAW-`、退款入账 `RFD-` 前缀）。
+- 退款镜像**不走 trade.refund**：ride 退款语义是"司机追回 min(分成,可用) + 平台兜底"，与标准原路退款不同，故按本地实际借贷腿用 `account.transfer` 精确镜像。
+- 平台=商户：`SYS_PLATFORM` 直接映射入驻商户账户；payment-pro 支付手续费（fee-bps，入 SYS_FEE）是支付系统营收，核对口径中从平台净额扣除。
+- 回调仅加速展示：payment-pro 异步通知 POST `/api/callbacks/payment-pro` → `payment_pro_notify` 留痕（event+bizId 幂等）；终态以镜像回执 + 对账为准。
+
+### 19.2 镜像语义映射
+
+| ride 操作 | payment-pro OpenAPI | 说明 |
+|---|---|---|
+| TOPUP | account.topup | 流水 credit 腿金额，bizNo=原充值键 |
+| PAY | trade.create → trade.pay(BALANCE) → account.transfer | 乘客扣款入商户；商户→司机净额分成；手续费留存商户。pp_order_id/pp_payment_id 落 outbox 断点续传 |
+| REFUND | account.transfer ×1~2 | 有 REFUND_DEBIT 腿先司机→商户追回，再商户→乘客全额 |
+| WITHDRAW | account.withdraw | 仅提现 SUCCESS 后镜像（D 账户 / C SYS_CASH） |
+| TRANSFER | account.transfer | 借贷腿定向划转 |
+
+投递失败退避 `min(30s, 1s<<min(retries,5))`，10 次耗尽置 DEAD；管理端 `GET /api/admin/mirror`（统计）、`/mirror/dead`、`POST /mirror/replay?key=`（重放）、`POST /mirror/close?key=&reason=`（线下处理完毕销账）。
+
+### 19.3 账户映射与对账口径
+
+`payment_pro_account`（user_id→member_id/account_id）懒开户：首次镜像时 `account.open`（name=userId 服务端幂等）+ 落映射 + **pp_balance_snapshot 基线快照**（开户时 pp 余额，平台行在 trade.pay 入账前落快照防重复计入）。
+
+PaymentMonitor 30s **增量核对**：`pp余额 == 基线快照 + 已投递(SENT)镜像的本地流水净额`（平台另扣 pp 手续费，经 trade.query 回查）。兼容接入前已有历史余额的钱包；在途镜像跳过避免竞态；历史无快照行自校准回填。另有镜像 DEAD/积压超龄告警。
+
+### 19.4 HTTPS 与入驻
+
+payment-pro 网关双连接器：HTTP 8080（控制台）不变，新增 HTTPS 8443（run.sh 首次 keytool 自签 RSA2048/PKCS12，SAN=localhost/127.0.0.1，导出公钥 `config/payment-pro-cert.pem`）；ride-pro JDK HttpClient SSLContext 仅信任该证书。签名两侧同构：TreeMap 排序、跳过 null/sign、k=v 以 & 连接、HmacSHA256 小写 hex，timestamp ±5min。
+
+入驻三步：`payment-pro ./run.sh` → `ride-pro ./run.sh` → `ride-pro ./integrate-payment.sh`（注册/复用 ride-pro 商户、开户、拷证书、写配置）→ 重启 ride-pro 生效。
+
+### 19.5 验证记录（2026-11-17）
+
+`verify-integration.py` **15/15**：充值/订单全链路支付/部分退款/提现 三方双账本增量一致、pp 交易单 PAID、回调留痕、**混沌**（停 payment-pro 本地充值正常→重启镜像追平）、ride 账面守恒 + 镜像队列清空 + payment-pro 对账全过。回归：ride-pro 单测 34/34；payment-pro smoke 79/79、verify-pro 22/22（集成改动未破坏两系统既有行为）。
+
+联调修复记录：① trade.create 直返 OrderDTO（非 {order} 包装）客户端解析修正；② 对账由绝对余额改为基线+净额增量口径（历史余额兼容）并计入 pp 手续费；③ 补齐镜像 DEAD 重放/关闭管理端点；④ 提现镜像额受 pp 侧余额约束（接入前历史收入未镜像，超额提现镜像会 DEAD 需人工处理——生产应自接入日起全量镜像）。

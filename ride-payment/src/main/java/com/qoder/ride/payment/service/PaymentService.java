@@ -19,15 +19,18 @@ import com.qoder.ride.facade.payment.TransferRequest;
 import com.qoder.ride.facade.payment.WalletAuditDTO;
 import com.qoder.ride.facade.payment.WalletDTO;
 import com.qoder.ride.facade.payment.WithdrawOrderDTO;
+import com.qoder.ride.payment.client.PaymentProIntegration;
 import com.qoder.ride.payment.config.PaymentProperties;
 import com.qoder.ride.payment.dataobject.IdempotentRecordDO;
 import com.qoder.ride.payment.dataobject.LedgerEntryDO;
+import com.qoder.ride.payment.dataobject.MirrorOutboxDO;
 import com.qoder.ride.payment.dataobject.PayOutboxDO;
 import com.qoder.ride.payment.dataobject.RefundOutboxDO;
 import com.qoder.ride.payment.dataobject.WalletDO;
 import com.qoder.ride.payment.dataobject.WithdrawOrderDO;
 import com.qoder.ride.payment.mapper.IdempotentMapper;
 import com.qoder.ride.payment.mapper.LedgerMapper;
+import com.qoder.ride.payment.mapper.MirrorOutboxMapper;
 import com.qoder.ride.payment.mapper.PayOutboxMapper;
 import com.qoder.ride.payment.mapper.RefundOutboxMapper;
 import com.qoder.ride.payment.mapper.WalletMapper;
@@ -64,6 +67,17 @@ public class PaymentService {
     private final WithdrawOrderMapper withdrawOrderMapper;
     private final TransactionTemplate transactionTemplate;
     private final PaymentProperties properties;
+    private final MirrorOutboxMapper mirrorOutboxMapper;
+    private final PaymentProIntegration integration;
+
+    /** 双账本镜像事件：与本地动账同事务写入；未配置 payment-pro 集成时不落事件，standalone 行为不变。 */
+    private void mirror(String bizType, String refKey, String userId, String orderId, long now) {
+        if (!integration.isEnabled()) {
+            return;
+        }
+        mirrorOutboxMapper.insert(new MirrorOutboxDO("M-" + bizType + "-" + refKey, bizType, refKey, userId, orderId,
+                "NEW", 0, 0L, null, null, null, now));
+    }
 
     public WalletDTO topup(TopupRequest request) {
         if (request.getUserId() == null || request.getUserId().isBlank()) {
@@ -86,6 +100,7 @@ public class PaymentService {
                 recordLedger(request.getUserId(), null, "TOPUP", amount, bizNo, now);
                 WalletDTO wallet = toWallet(walletMapper.selectByUserId(request.getUserId()));
                 idempotentMapper.insert(new IdempotentRecordDO(bizNo, "TOPUP", JsonUtil.toJson(wallet), now));
+                mirror("TOPUP", bizNo, request.getUserId(), null, now);
                 return wallet;
             });
             log.info("钱包充值 userId={} amount={} balance={}", request.getUserId(), amount, dto.getBalance());
@@ -185,6 +200,7 @@ public class PaymentService {
                     throw new BizException(ResultCode.CONFLICT, "提现扣款失败（冻结不足）: " + row.getId());
                 }
                 recordLedger(row.getUserId(), null, "WITHDRAW", -row.getAmount(), row.getBizNo(), now);
+                mirror("WITHDRAW", row.getBizNo(), row.getUserId(), null, now);
                 idempotentMapper.merge(new IdempotentRecordDO(row.getBizNo(), "WITHDRAW",
                         JsonUtil.toJson(toWallet(walletMapper.selectByUserId(row.getUserId()))), now));
             });
@@ -242,6 +258,7 @@ public class PaymentService {
                 dto.setRepeated(false);
                 idempotentMapper.insert(new IdempotentRecordDO(requestId, "PAY", JsonUtil.toJson(dto), now));
                 outboxMapper.insert(new PayOutboxDO(request.getOrderId(), requestId, "NEW", 0, 0L, now));
+                mirror("PAY", requestId, request.getPassengerId(), request.getOrderId(), now);
                 return dto;
             });
             log.info("行程支付 orderId={} amount={} fee={} driverIncome={} passengerBalance={}",
@@ -292,6 +309,7 @@ public class PaymentService {
                 dto.setPassengerBalance(walletMapper.selectByUserId(request.getFromUserId()).getBalance());
                 dto.setRepeated(false);
                 idempotentMapper.insert(new IdempotentRecordDO(requestId, "TRANSFER", JsonUtil.toJson(dto), now));
+                mirror("TRANSFER", requestId, request.getFromUserId(), request.getOrderId(), now);
                 return dto;
             });
             log.info("资金划转 bizType={} orderId={} from={} to={} amount={}",
@@ -377,6 +395,7 @@ public class PaymentService {
                 dto.setRepeated(false);
                 idempotentMapper.insert(new IdempotentRecordDO(requestId, "REFUND", JsonUtil.toJson(dto), now));
                 refundOutboxMapper.insert(new RefundOutboxDO(requestId, request.getOrderId(), "NEW", 0, 0L, now));
+                mirror("REFUND", requestId, request.getPassengerId(), request.getOrderId(), now);
                 return dto;
             });
             log.info("订单退款 orderId={} requestId={} amount={} driverClawback={} platformPart={} passengerBalance={}",

@@ -69,3 +69,44 @@ CREATE TABLE IF NOT EXISTS refund_outbox (
     created_at    BIGINT      NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_refund_outbox_pending ON refund_outbox (status, next_retry_at);
+
+-- ===== payment-pro 双账本集成（可选，未配置 config/payment-pro.properties 时不产生任何镜像事件） =====
+
+-- 用户 → payment-pro 会员/账户映射（SYS_PLATFORM 映射到商户账户）。
+-- pp_balance_snapshot：开户映射时的 payment-pro 余额基线，双账本核对按“基线+已投递镜像净额”增量比对，
+-- 兼容接入前已有余额的钱包/商户账户。
+CREATE TABLE IF NOT EXISTS payment_pro_account (
+    user_id             VARCHAR(32) PRIMARY KEY,
+    member_id           VARCHAR(32) NOT NULL,
+    account_id          VARCHAR(32) NOT NULL,
+    created_at          BIGINT      NOT NULL,
+    pp_balance_snapshot BIGINT
+);
+ALTER TABLE payment_pro_account ADD COLUMN IF NOT EXISTS pp_balance_snapshot BIGINT;
+
+-- 资金镜像 outbox：与本地动账同事务写入，单线程按 created_at 顺序投递到 payment-pro OpenAPI，
+-- biz_no 确定性幂等；pp_order_id/pp_payment_id 记录多步镜像（下单→支付→分成）断点。
+CREATE TABLE IF NOT EXISTS mirror_outbox (
+    biz_no        VARCHAR(96) PRIMARY KEY,
+    biz_type      VARCHAR(16)  NOT NULL,
+    ref_key       VARCHAR(64)  NOT NULL,
+    user_id       VARCHAR(32)  NOT NULL,
+    order_id      VARCHAR(32),
+    status        VARCHAR(16)  NOT NULL,
+    retries       INT          NOT NULL,
+    next_retry_at BIGINT       NOT NULL,
+    pp_order_id   VARCHAR(32),
+    pp_payment_id VARCHAR(32),
+    last_error    VARCHAR(256),
+    created_at    BIGINT       NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mirror_pending ON mirror_outbox (status, next_retry_at);
+
+-- payment-pro 异步通知留痕（回调仅加速展示，终态以镜像回执+对账为准）。
+CREATE TABLE IF NOT EXISTS payment_pro_notify (
+    event      VARCHAR(32)   NOT NULL,
+    biz_id     VARCHAR(64)   NOT NULL,
+    payload    VARCHAR(2048) NOT NULL,
+    created_at BIGINT        NOT NULL,
+    PRIMARY KEY (event, biz_id)
+);

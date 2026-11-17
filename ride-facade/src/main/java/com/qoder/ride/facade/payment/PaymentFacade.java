@@ -62,4 +62,19 @@ public interface PaymentFacade {
 
     /** 人工重放 DEAD 事件（按 orderId 或 requestId 匹配），返回重置条数。 */
     Result<Integer> replayOutbox(String key);
+
+    /** payment-pro 异步通知留痕（event+bizId 幂等），回调仅加速展示，终态以镜像回执+对账为准。 */
+    Result<Void> recordNotify(String event, String bizId, String payload);
+
+    /** 双账本镜像投递监控（未配置集成时全 0）。 */
+    Result<OutboxStatsDTO> mirrorStats();
+
+    /** 镜像 DEAD 事件列表（重试耗尽待人工介入）。 */
+    Result<List<MirrorEventDTO>> deadMirrors();
+
+    /** 人工重放镜像 DEAD 事件（按 bizNo），返回重置条数。 */
+    Result<Integer> replayMirror(String bizNo);
+
+    /** 人工关闭镜像 DEAD 事件（线下处理完毕后销账，不再告警），返回关闭条数。 */
+    Result<Integer> closeMirror(String bizNo, String reason);
 }

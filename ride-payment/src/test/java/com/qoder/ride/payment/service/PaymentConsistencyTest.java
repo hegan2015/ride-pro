@@ -9,11 +9,15 @@ import com.qoder.ride.facade.payment.TopupRequest;
 import com.qoder.ride.facade.payment.TransferRequest;
 import com.qoder.ride.facade.payment.WalletAuditDTO;
 import com.qoder.ride.facade.payment.WalletDTO;
+import com.qoder.ride.payment.client.PaymentProClient;
+import com.qoder.ride.payment.client.PaymentProIntegration;
 import com.qoder.ride.payment.config.PaymentProperties;
 import com.qoder.ride.payment.dataobject.WithdrawOrderDO;
 import com.qoder.ride.payment.mapper.IdempotentMapper;
 import com.qoder.ride.payment.mapper.LedgerMapper;
+import com.qoder.ride.payment.mapper.MirrorOutboxMapper;
 import com.qoder.ride.payment.mapper.PayOutboxMapper;
+import com.qoder.ride.payment.mapper.PaymentProAccountMapper;
 import com.qoder.ride.payment.mapper.RefundOutboxMapper;
 import com.qoder.ride.payment.mapper.WalletMapper;
 import com.qoder.ride.payment.mapper.WithdrawOrderMapper;
@@ -73,6 +77,8 @@ class PaymentConsistencyTest {
         cfg.addMapper(PayOutboxMapper.class);
         cfg.addMapper(RefundOutboxMapper.class);
         cfg.addMapper(WithdrawOrderMapper.class);
+        cfg.addMapper(MirrorOutboxMapper.class);
+        cfg.addMapper(PaymentProAccountMapper.class);
         SqlSessionFactory factory = new SqlSessionFactoryBuilder().build(cfg);
         SqlSessionTemplate template = new SqlSessionTemplate(factory);
         walletMapper = template.getMapper(WalletMapper.class);
@@ -83,8 +89,12 @@ class PaymentConsistencyTest {
         RefundOutboxMapper refundOutboxMapper = template.getMapper(RefundOutboxMapper.class);
         TransactionTemplate tt = new TransactionTemplate(new DataSourceTransactionManager(ds));
         properties = new PaymentProperties();
+        PaymentProIntegration integration = new PaymentProIntegration(
+                new PaymentProClient("config-not-exist.properties"),
+                template.getMapper(PaymentProAccountMapper.class), properties);
         service = new PaymentService(walletMapper, ledgerMapper, idempotentMapper, outboxMapper,
-                refundOutboxMapper, withdrawOrderMapper, tt, properties);
+                refundOutboxMapper, withdrawOrderMapper, tt, properties,
+                template.getMapper(MirrorOutboxMapper.class), integration);
     }
 
     /** 模拟 WithdrawProcessor：受理→处理中→终态（测试里立即结算，不等渠道模拟时长）。 */

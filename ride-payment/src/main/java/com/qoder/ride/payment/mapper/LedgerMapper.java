@@ -39,6 +39,10 @@ public interface LedgerMapper {
     @Select("SELECT * FROM ledger_entry WHERE order_id=#{orderId} AND biz_type=#{bizType} LIMIT 1")
     LedgerEntryDO selectByOrderAndBizType(@Param("orderId") String orderId, @Param("bizType") String bizType);
 
+    /** 双账本镜像：按幂等键回查该笔操作的全部借贷腿。 */
+    @Select("SELECT * FROM ledger_entry WHERE request_id=#{requestId} ORDER BY id")
+    List<LedgerEntryDO> selectByRequestId(String requestId);
+
     @SelectProvider(type = LedgerSqlProvider.class, method = "query")
     List<LedgerEntryDO> query(Map<String, Object> params);
 
