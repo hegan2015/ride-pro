@@ -7,7 +7,7 @@
 set -u
 cd "$(dirname "$0")/.."
 
-BASE="http://127.0.0.1:${GATEWAY_PORT:-8080}"
+BASE="http://127.0.0.1:${GATEWAY_PORT:-8090}"
 ADMIN_TOKEN="${ADMIN_TOKEN:-ride-admin}"
 SUFFIX="$(date +%s)$$"
 PASS=0; FAIL=0

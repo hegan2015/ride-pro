@@ -22,10 +22,10 @@ dubbo:
     name: ride-driver
     qos-enable: false
   registry:
-    address: zookeeper://127.0.0.1:${ZK_PORT:2181}
+    address: zookeeper://127.0.0.1:${ZK_PORT:2182}
   protocol:
     name: dubbo
-    port: ${DRIVER_DUBBO_PORT:20882}
+    port: ${DRIVER_DUBBO_PORT:20902}
   provider:
     timeout: 5000
     retries: 0

@@ -42,24 +42,24 @@ wait_http() {
 }
 
 start registry ride-registry
-wait_http "http://127.0.0.1:${ZK_HTTP_PORT:-8092}/health" registry 60
+wait_http "http://127.0.0.1:${ZK_HTTP_PORT:-8093}/health" registry 60
 
 for svc in passenger driver location pricing order dispatch payment push; do
   start "$svc" "ride-$svc"
 done
 
 start gateway ride-gateway
-wait_http "http://127.0.0.1:${GATEWAY_PORT:-8080}/api/health" gateway 90
+wait_http "http://127.0.0.1:${GATEWAY_PORT:-8090}/api/health" gateway 90
 
 echo "==> 等待全部域服务注册并通过健康检查..."
 for ((i=0; i<120; i++)); do
-  ready=$(curl -sf --max-time 5 "http://127.0.0.1:${GATEWAY_PORT:-8080}/api/health" \
+  ready=$(curl -sf --max-time 5 "http://127.0.0.1:${GATEWAY_PORT:-8090}/api/health" \
     | python3 -c 'import sys,json; print("yes" if json.load(sys.stdin).get("allOk") else "no")' 2>/dev/null || echo "no")
   if [ "$ready" = "yes" ]; then
     echo "==> 全部 10 个进程健康 ✔"
-    echo "==> 门户首页: http://127.0.0.1:${GATEWAY_PORT:-8080}/"
-    echo "==> 乘客端:   http://127.0.0.1:${GATEWAY_PORT:-8080}/passenger.html"
-    echo "==> 司机端:   http://127.0.0.1:${GATEWAY_PORT:-8080}/driver.html"
+    echo "==> 门户首页: http://127.0.0.1:${GATEWAY_PORT:-8090}/"
+    echo "==> 乘客端:   http://127.0.0.1:${GATEWAY_PORT:-8090}/passenger.html"
+    echo "==> 司机端:   http://127.0.0.1:${GATEWAY_PORT:-8090}/driver.html"
     exit 0
   fi
   sleep 2

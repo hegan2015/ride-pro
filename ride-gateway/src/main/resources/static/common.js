@@ -1,5 +1,5 @@
 // 司乘端/管理端共享工具：REST、WebSocket（内置心跳）、金额/状态格式化、toast、抽屉/弹窗、订单详情组件、轻量地图。
-const WS_PORT = 9100;
+const WS_PORT = 9101;
 
 const PRESETS = [
   { name: '国贸', lat: 39.908, lng: 116.459 },

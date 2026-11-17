@@ -1,5 +1,5 @@
 server:
-  port: ${GATEWAY_PORT:8080}
+  port: ${GATEWAY_PORT:8090}
 
 spring:
   application:
@@ -13,17 +13,17 @@ dubbo:
     name: ride-gateway
     qos-enable: false
   registry:
-    address: zookeeper://127.0.0.1:${ZK_PORT:2181}
+    address: zookeeper://127.0.0.1:${ZK_PORT:2182}
   protocol:
     name: dubbo
-    port: ${GATEWAY_DUBBO_PORT:20880}
+    port: ${GATEWAY_DUBBO_PORT:20900}
   consumer:
     check: false
     timeout: 8000
     retries: 0
 
 registry:
-  health-url: http://127.0.0.1:${ZK_HTTP_PORT:8092}/health
+  health-url: http://127.0.0.1:${ZK_HTTP_PORT:8093}/health
 
 # 管理端令牌（X-Admin-Token）、行程分享 HMAC 密钥、API 单机限流（每 IP 每秒）。
 gateway:

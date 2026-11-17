@@ -46,14 +46,14 @@ public class HealthService {
 
     public Map<String, Object> aggregate() {
         List<Map<String, Object>> services = new ArrayList<>();
-        services.add(row("ride-passenger", 20881, ping(passengerHealth)));
-        services.add(row("ride-driver", 20882, ping(driverHealth)));
-        services.add(row("ride-location", 20883, ping(locationHealth)));
-        services.add(row("ride-pricing", 20884, ping(pricingHealth)));
-        services.add(row("ride-order", 20885, ping(orderHealth)));
-        services.add(row("ride-dispatch", 20886, ping(dispatchHealth)));
-        services.add(row("ride-payment", 20887, ping(paymentHealth)));
-        services.add(row("ride-push", 20888, ping(pushHealth)));
+        services.add(row("ride-passenger", 20901, ping(passengerHealth)));
+        services.add(row("ride-driver", 20902, ping(driverHealth)));
+        services.add(row("ride-location", 20903, ping(locationHealth)));
+        services.add(row("ride-pricing", 20904, ping(pricingHealth)));
+        services.add(row("ride-order", 20905, ping(orderHealth)));
+        services.add(row("ride-dispatch", 20906, ping(dispatchHealth)));
+        services.add(row("ride-payment", 20907, ping(paymentHealth)));
+        services.add(row("ride-push", 20908, ping(pushHealth)));
         boolean registryOk = registryUp();
         boolean allOk = registryOk && services.stream().allMatch(s -> Boolean.TRUE.equals(s.get("ok")));
         Map<String, Object> result = new LinkedHashMap<>();

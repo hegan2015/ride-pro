@@ -78,25 +78,27 @@ v1.1.0 变更：修复推送断连无补偿缺陷（connectWS 自动重连 + CON
 
 | 进程 | HTTP | Dubbo | 其他 |
 |---|---|---|---|
-| ride-registry | 8092（/health 探针） | — | ZK 2181 |
-| ride-passenger | — | 20881 | |
-| ride-driver | — | 20882 | |
-| ride-location | — | 20883 | |
-| ride-pricing | — | 20884 | |
-| ride-order | — | 20885 | |
-| ride-dispatch | — | 20886 | |
-| ride-payment | — | 20887 | |
-| ride-push | — | 20888 | WebSocket 9100 |
-| ride-gateway | 8080（REST + H5） | 20880 | |
+| ride-registry | 8093（/health 探针） | — | ZK 2182 |
+| ride-passenger | — | 20901 | |
+| ride-driver | — | 20902 | |
+| ride-location | — | 20903 | |
+| ride-pricing | — | 20904 | |
+| ride-order | — | 20905 | |
+| ride-dispatch | — | 20906 | |
+| ride-payment | — | 20907 | |
+| ride-push | — | 20908 | WebSocket 9101 |
+| ride-gateway | 8090（REST + H5） | 20900 | |
+
+> **端口隔离（2026-11-17）**：ride-pro 整体迁至 8090/2182/8093/2090x/9101 段，与 payment-pro（8080/2181/8092/2088x）完全错开，**两套系统可同时运行**。历史版本（≤v1.4.0 验证记录）中的 8080/9100/2181/2088x 均指迁移前端口。
 
 环境变量可覆盖：`ZK_PORT`、`ZK_HTTP_PORT`、`DATA_DIR`、`GATEWAY_PORT`、`GATEWAY_DUBBO_PORT`、`ORDER_DUBBO_PORT`、`PUSH_DUBBO_PORT`、`PUSH_WS_PORT`（见各模块 application.yml）。
 
 ### 2.3 调用拓扑
 
 ```
- 乘客端 H5 ──HTTP──┐                    ┌──WS 9100── 乘客端 H5
-                  ├─ ride-gateway(8080) │
- 司机端 H5 ──HTTP──┘        │ Dubbo      └──WS 9100── 司机端 H5
+ 乘客端 H5 ──HTTP──┐                    ┌──WS 9101── 乘客端 H5
+                  ├─ ride-gateway(8090) │
+ 司机端 H5 ──HTTP──┘        │ Dubbo      └──WS 9101── 司机端 H5
                            ▼
         ┌────────────── ride-order（编排中枢）──────────────┐
         ▼            ▼           ▼           ▼            ▼
@@ -104,7 +106,7 @@ v1.1.0 变更：修复推送断连无补偿缺陷（connectWS 自动重连 + CON
                                           │        │
                                           ▼        ▼
                                     ride-location  ride-push ──WS──► 司乘端
-                           所有进程 ──注册/发现──► ride-registry(内嵌 ZK 2181)
+                           所有进程 ──注册/发现──► ride-registry(内嵌 ZK 2182)
 ```
 
 依赖方向单向：gateway → 各域；order → passenger/pricing/driver/dispatch/payment/push；dispatch → location/push；location → driver。**无环依赖**；派单域不反查订单详情，由订单域在 `DispatchRequest` 中携带快照（ride-facade/.../dispatch/DispatchRequest.java:10）。
@@ -364,7 +366,7 @@ HttpServerCodec → HttpObjectAggregator(65536) → UriCaptureHandler
 - **身份走路径** `/ws/{role}/{id}`（role=passenger|driver）。该 Netty 版本握手对路径精确匹配，query 传身份会握手挂起；六参构造 `checkStartsWith=true` 开启前缀匹配。
 - `UriCaptureHandler` 在握手消费 HttpRequest 之前把 URI 存入 Channel Attribute，供握手完成后解析。
 - **IdleStateHandler(90,0,0)**：90s 无任何读（含客户端 PING 心跳）判定死连接，`WebSocketFrameHandler.userEventTriggered` 收 IdleStateEvent 主动 close 回收，杜绝半开连接堆积。
-- boss/worker 均用 **daemon 线程工厂**：SIGTERM 后 JVM 可正常退出、9100 端口立即释放（非 daemon 曾导致停服务残留占端口）。
+- boss/worker 均用 **daemon 线程工厂**：SIGTERM 后 JVM 可正常退出、9101 端口立即释放（非 daemon 曾导致停服务残留占端口）。
 
 ### 9.2 连接注册与帧处理
 
@@ -696,7 +698,7 @@ HttpServerCodec → HttpObjectAggregator(65536) → UriCaptureHandler
 
 ### 12.3 WebSocket 协议
 
-- 接入：`ws://host:9100/ws/{role}/{id}`，role∈{passenger, driver}；非法握手直接 close。
+- 接入：`ws://host:9101/ws/{role}/{id}`，role∈{passenger, driver}；非法握手直接 close。
 - 下行帧：`{event, data, timestamp}`（事件清单见 §9.3）。
 - 上行帧：文本含 `PING` → 下行 `PONG`；其余忽略。
 - 多端登录：同 role:id 后到覆盖，旧连接先收 `KICKED` 再被 close；新版客户端收到 KICKED 停止重连（防互踢活锁）。
@@ -799,7 +801,7 @@ UriCapture 先存 URI → 握手完成事件触发 parseIdentity（路径段 [2]
 ## 15. 网关与前端（五页面 + 组件库）
 
 - 静态托管：`classpath:/static/`，零安装零构建。页面：index.html（门户+健康总览）、passenger.html（乘客端）、driver.html（司机端）、admin.html（管理端）、share.html（行程分享），共享 common.css/common.js。
-- **common.js 组件库**：`api()` fetch 包装（失败抛 `{error}`）；`connectWS(role,id,onEvent,onStatus)` 拼 `ws://host:9100/ws/{role}/{id}`（指数退避重连 + 30s PING + KICKED 停重连）；`MapView` canvas 地图（PRESETS 北京六地标 + BBOX 经纬度包围盒 + 轨迹/ markers 绘制）；UI 组件 `statusBadge/yuan/fmtTime/escapeHtml/toast/pushLog/openDrawer/closeDrawer/confirmDialog(message,okText)/ratingModal/renderPager`；业务渲染 `fareHtml`（计价明细）/`timelineHtml`（状态时间线）/`ledgerRowsHtml`（流水）/`ratingsHtml`（评价）/`historyRowsHtml`+`bindHistoryRows`（订单记录行）/`openOrderDrawer`（详情抽屉：车型徽章+计价快照+时间线+轨迹小地图+本人流水+评价）。
+- **common.js 组件库**：`api()` fetch 包装（失败抛 `{error}`）；`connectWS(role,id,onEvent,onStatus)` 拼 `ws://host:9101/ws/{role}/{id}`（指数退避重连 + 30s PING + KICKED 停重连）；`MapView` canvas 地图（PRESETS 北京六地标 + BBOX 经纬度包围盒 + 轨迹/ markers 绘制）；UI 组件 `statusBadge/yuan/fmtTime/escapeHtml/toast/pushLog/openDrawer/closeDrawer/confirmDialog(message,okText)/ratingModal/renderPager`；业务渲染 `fareHtml`（计价明细）/`timelineHtml`（状态时间线）/`ledgerRowsHtml`（流水）/`ratingsHtml`（评价）/`historyRowsHtml`+`bindHistoryRows`（订单记录行）/`openOrderDrawer`（详情抽屉：车型徽章+计价快照+时间线+轨迹小地图+本人流水+评价）。
 - **司乘端布局**：顶部 `.tabs` + 移动端 `.bottomnav` 双导航，`switchTab` 切换 `.tabpane`。乘客端四页：叫车（地图点选起终点→车型选择→预估价明细→叫车→时间线实时点亮→COMPLETED **支付确认单（actualFare 实际计价明细）**→PAID 评价/分享）、订单记录（状态/时间过滤+分页+消费统计+详情抽屉）、钱包（余额+充值+**免密自动扣款开关**+流水分页）、实时事件。司机端四页：接单（上线→3s 位置上报→ORDER_OFFER 抢单卡片→到达/开始/完成→模拟驾驶）、订单记录、收入（**冻结/可用余额**+累计/今日/服务分+**提现记录状态徽章（pending 3s 轮询）**+流水分页）、实时事件。
 - **v1.4.0 前端资金安全交互**（展示层补偿，可靠性全部服务端兜底）：充值/提现按钮请求期间禁用 + **幂等键意图内复用**（网络错误保留键重试不双入账，成功或改金额才换新键）；支付网络错误→「支付结果确认中」2s×8 短轮询订单状态，禁止盲目重试；余额不足→差额一键充值（TOPUP-PAY-{orderId} 确定性键）续付；ORDER_REFUNDED→刷新钱包（部分退款提示本次/剩余）；PAYMENT_REMINDER 催付 toast；司机 ORDER_PAID 到账金额用服务端 driverIncome（不再前端 ×0.8 估算）。
 - **管理端 admin.html 六模块**（侧边 `.tabs` 导航，需 X-Admin-Token）：仪表盘（订单统计+营收+钱包+outbox+WS 聚合+账面守恒平/不平）、资金流水（全局 ledger 多条件过滤+分页+详情抽屉+账面核对 audit+**CSV 导出**）、订单管理（query 过滤+分页+强制取消+**退款弹窗：实付/已退/剩余可退展示、金额输入默认剩余、原因**）、钱包总览、系统日志（白名单尾随+traceId 检索）、一致性监控（**5s 自刷新**+outbox 双表统计含 DEAD+**阈值告警：积压>10s 或 DEAD>0 才红**+**DEAD 列表与一键重放**+WS 连接+推送审计）。顶部「播种演示数据」只增不删。
@@ -819,7 +821,7 @@ UriCapture 先存 URI → 握手完成事件触发 parseIdentity（路径段 [2]
 ./stop.sh            # 依赖序优雅停止，数据保留
 ```
 
-run.sh 流程：JAVA_HOME 优先 corretto-18（release=17；默认 PATH 的 java 26 不可用于构建）→ mkdir run/logs/data → registry 先启并等 8092/health（60s）→ 8 域顺次启动（不等就绪）→ gateway 启动等 8080（90s）→ 轮询 /api/health 的 allOk（120×2s）→ 打印三个 URL。pid 落 run/*.pid，日志落 logs/<域>.log。
+run.sh 流程：JAVA_HOME 优先 corretto-18（release=17；默认 PATH 的 java 26 不可用于构建）→ mkdir run/logs/data → registry 先启并等 8093/health（60s）→ 8 域顺次启动（不等就绪）→ gateway 启动等 8090（90s）→ 轮询 /api/health 的 allOk（120×2s）→ 打印三个 URL。pid 落 run/*.pid，日志落 logs/<域>.log。
 
 **stop.sh 依赖序（关键约束）**：`gateway → dispatch → order → payment → push → location → pricing → driver → passenger → registry`，逐进程 SIGTERM + 20s 等待 + SIGKILL 兜底。**registry 必须最后停**：业务进程停机时若 ZK 已失联，Dubbo shutdown hook 会阻塞在注册中心销毁上（曾致全员 15s 后 SIGKILL）；改序后实测 28.7s 全优雅退出、零 SIGKILL。
 
@@ -832,9 +834,9 @@ run.sh 流程：JAVA_HOME 优先 corretto-18（release=17；默认 PATH 的 java
 
 | 症状 | 处置 |
 |---|---|
-| 9100 被占 | 确认无残留 push 进程（daemon 线程修复后 SIGTERM 即释放）；勿直接删数据 |
+| 9101 被占 | 确认无残留 push 进程（daemon 线程修复后 SIGTERM 即释放）；勿直接删数据 |
 | 某域 health ok=false | 看 logs/<域>.log 的 ZK 连接与 Dubbo 导出日志；必要时单域重启 |
-| 全部 ok=false 且 registry ok=false | registry 未起或 2181 被占；先恢复 registry |
+| 全部 ok=false 且 registry ok=false | registry 未起或 2182 被占；先恢复 registry |
 | 构建报 release 17 不支持 | JAVA_HOME 指向 corretto-18，勿用 PATH 默认 java 26 |
 | 单域重启报 Dubbo 端口 BindException | 旧进程 shutdown hook 未释放端口，先 `kill -0` 轮询等旧进程退出再启 |
 

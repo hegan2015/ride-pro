@@ -23,8 +23,8 @@ public class EmbeddedZooKeeper implements InitializingBean, DisposableBean {
 
     @Override
     public void afterPropertiesSet() throws Exception {
-        int port = Integer.parseInt(System.getenv().getOrDefault("ZK_PORT", "2181"));
-        int healthPort = Integer.parseInt(System.getenv().getOrDefault("ZK_HTTP_PORT", "8092"));
+        int port = Integer.parseInt(System.getenv().getOrDefault("ZK_PORT", "2182"));
+        int healthPort = Integer.parseInt(System.getenv().getOrDefault("ZK_HTTP_PORT", "8093"));
         Path dataDir = Path.of(System.getenv().getOrDefault("DATA_DIR", "data"), "zookeeper");
         Files.createDirectories(dataDir);
 

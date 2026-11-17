@@ -33,7 +33,7 @@ public class NettyWebSocketServer implements InitializingBean, DisposableBean {
 
     private final WebSocketFrameHandler frameHandler;
 
-    @Value("${push.websocket-port:9100}")
+    @Value("${push.websocket-port:9101}")
     private int port;
     @Value("${push.websocket-path:/ws}")
     private String path;

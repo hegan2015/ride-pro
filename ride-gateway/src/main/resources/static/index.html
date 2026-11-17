@@ -49,7 +49,7 @@
       <div class="card">
         <h2><span class="dot"></span>实时长连接</h2>
         <div class="kv"><span class="k">WebSocket 在线连接</span><span class="v" id="onlineCount">--</span></div>
-        <div class="kv"><span class="k">推送通道</span><span class="v">Netty · ws://host:9100/ws/{role}/{id}</span></div>
+        <div class="kv"><span class="k">推送通道</span><span class="v">Netty · ws://host:9101/ws/{role}/{id}</span></div>
         <div class="kv"><span class="k">注册中心</span><span class="v" id="regState">--</span></div>
         <p class="muted small" style="margin-top:14px">
           领域划分：乘客 / 司机 / 位置(LBS) / 计价 / 订单 / 派单调度 / 支付钱包 / 消息推送(Netty) / 网关。
@@ -68,7 +68,7 @@
         const h = await api('GET', '/api/health');
         const body = document.getElementById('healthBody');
         const reg = h.registry && h.registry.ok;
-        let rows = `<tr><td>ride-registry (ZK)</td><td>2181 / 8092</td><td>${reg ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>`;
+        let rows = `<tr><td>ride-registry (ZK)</td><td>2182 / 8093</td><td>${reg ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>`;
         (h.services || []).forEach(s => {
           rows += `<tr><td>${s.service}</td><td>${s.port}</td><td>${s.ok ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>`;
         });

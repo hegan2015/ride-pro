@@ -265,7 +265,7 @@
       try {
         const h = await api('GET', '/api/health');
         $('healthBody').innerHTML =
-          `<tr><td>ride-registry (ZK)</td><td>2181/8092</td><td>${h.registry.ok ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>` +
+          `<tr><td>ride-registry (ZK)</td><td>2182/8093</td><td>${h.registry.ok ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>` +
           h.services.map(s => `<tr><td>${s.service}</td><td>${s.port}</td><td>${s.ok ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>`).join('');
       } catch { $('healthBody').innerHTML = '<tr><td colspan="3" class="muted">网关不可达</td></tr>'; }
     }

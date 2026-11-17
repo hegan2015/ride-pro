@@ -9,10 +9,10 @@ dubbo:
     name: ride-push
     qos-enable: false
   registry:
-    address: zookeeper://127.0.0.1:${ZK_PORT:2181}
+    address: zookeeper://127.0.0.1:${ZK_PORT:2182}
   protocol:
     name: dubbo
-    port: ${PUSH_DUBBO_PORT:20888}
+    port: ${PUSH_DUBBO_PORT:20908}
   provider:
     timeout: 5000
     retries: 0
@@ -22,7 +22,7 @@ dubbo:
     retries: 0
 
 push:
-  websocket-port: ${PUSH_WS_PORT:9100}
+  websocket-port: ${PUSH_WS_PORT:9101}
   websocket-path: /ws
 
 logging:
