@@ -846,7 +846,19 @@ run.sh 流程：JAVA_HOME 优先 corretto-18（release=17；默认 PATH 的 java
 
 ## 17. 验证记录
 
-### 17.0 v1.3.0（2026-11-17）
+### 17.0 v1.4.0（2026-11-17）
+
+- **单元测试 34 项全过**（`./mvnw clean package`，BUILD SUCCESS）：MoneyUtilTest 3、PricingServiceTest 11、OrderStateMachineTest 8、PaymentConsistencyTest 12（新增：提现冻结→结算→幂等回放、提现失败解冻+账面守恒、部分退款累计守卫+手续费按比例+平台兜底、无支付流水退款拒绝、风控限额+幂等键必填）。
+- **混沌脚本 12 节 60 项全过**（`run/chaos-test.sh`）：并发抢单唯一胜者、并发支付只扣一次、取消费、司机取消回派单、管理鉴权+退款守恒、**提现状态机**（超额 409→受理冻结→渠道 SUCCESS→幂等回放不重复扣→WITHDRAW 流水恰 1 条）、**部分退款**（退半保持 PAID→超剩余 400→退满 REFUNDED→REFUND_CREDIT 两笔）、未支付退款 409、充值限额 409、缺幂等键 400、**免密自动扣款**（完单后服务端 30s 宽限自动 PAID）、**支付窗口杀 order**（outbox/对账自愈最终 PAID、只扣一次）、**退款窗口杀 order**（refund outbox/对账自愈最终 REFUNDED、只退一次、pending=0、账面守恒）。
+- **启动**：10 进程 allOk=true。期间发现并修复一处交付缺陷：最后一轮前端修改晚于打包时间，网关 jar 内静态页为旧版（支付无确认单）；`clean package` 全量重构建后重启网关恢复（注意 `-pl` 单模块打包会从 .m2 取旧 facade，必须全量 reactor 构建）。
+- **三端浏览器全流程实测**（browser-use evaluate_script 驱动，乘客 P7/司机 D11 新增数据）：
+  - 乘客端：注册→充值 ¥100（确认弹窗+流水 1 笔）→UI 叫车 O38（预估明细）→支付确认单展示**实际计价明细**（起步/里程/时长/远途/规则版本）→余额精确扣减；O40 余额不足（¥27.03 < ¥88.58）→弹窗「还差 ¥61.55，充值差额并继续支付」→一键差额充值 6155 分+续付成功、PAY_DEBIT 恰 1 条；免密开关服务端生效；O41 余额 0+免密开→服务端自动扣款失败→**PAYMENT_REMINDER 实时推送**→充值后 60s 重试窗口内**服务端自动 PAID**（无需客户端支付）、ORDER_PAID 事件含 driverIncome/fee。
+  - 司机端：可用 ¥160.62（四单分成精确合计）/冻结 ¥0.00 双余额展示；提现 ¥50 确认弹窗（冻结语义说明）→「提现已受理」toast+冻结 ¥50+记录徽章「已受理」→3s 轮询自动变「已到账」+解冻+可用 ¥110.62；UI 抢单邀约卡（预估收入 ¥16.66）→到达/开始/结束行程按钮推进→O42 支付后 ORDER_PAID 推送 driverIncome=1080、余额自动刷新 ¥121.42。
+  - 管理端：token 鉴权进入；一致性监控 outbox 待投递 0/已投递 22/DEAD 0+「无 DEAD 事件」表+WS 连接+推送审计（送达/离线跳过）；订单行详情→退款弹窗展示**实付/已退/剩余可退**（¥13.50/¥0.00/¥13.50）+金额默认剩余→部分退 ¥6.75→toast「部分退款完成 O42」→服务端 refundedAmount=675/refundCount=1、REFUND_CREDIT 675、订单保持 PAID。
+- **终态审计**：`/api/admin/audit` 全部账户账面守恒=True；outbox pending=0、dead=0。
+- **数据保护**：全程未删除/重置 data/ 与 H2 库；仅新增 P7/D11 及 O38–O42 测试数据。
+
+### 17.1 v1.3.0（2026-11-17）
 
 - **单元测试 30 项全过**（`./mvnw test`，BUILD SUCCESS）：MoneyUtilTest 3（fee 半进位边界）、PricingServiceTest 11（分车型/高峰/夜间/远途/最低消费/轨迹覆盖/版本指纹）、OrderStateMachineTest 8（H2 内存库同 schema：8 路并发抢单仅一胜、全生命周期 CAS 链、取消/强制取消守卫、司机取消回 DISPATCHING、过期/退款守卫、markDispatched 轮次、幂等主键拒重、动态查询分页）、PaymentConsistencyTest 8（Spring 事务模板：8 路并发支付恰扣一次+outbox 同事务、余额不足拒绝、转账幂等+守卫、退款平台兜底司机缺口、退款正常分账、提现守卫+幂等、只读钱包不建钱包、账面恒守恒）。
 - **混沌脚本 32 项全过**（`run/chaos-test.sh`）：含进程级——kill order 模拟扣款后崩溃 → 等旧进程退出 → 重启 → outbox/对账自愈 → 最终 PAID、单条 PAY_DEBIT、outbox pending=0、账面守恒。
@@ -861,7 +873,7 @@ run.sh 流程：JAVA_HOME 优先 corretto-18（release=17；默认 PATH 的 java
   - traceId 日志：TraceFilter/TraceWebFilter 早已存在但 10 个 yml 均未配 logging.pattern，日志无 traceId；补全 `logging.pattern.console` 含 `%X{traceId:-}` 后全量重构建重启，验证跨域透传（pricing.log 带 `[fe0e0b41…]`，admin logs?traceId 命中）。
 - **数据保护**：全程未删除/重置 data/ 与 H2 库；播种只增不删。新增种子 P4 小雨/P5 小风、D6 快车张/D7 专车李/D8 出租王（各 +¥200）；O26 PAID+评价+分享、O27 PAID、O20 强制 CANCELLED。
 
-### 17.1 历史验证（v1.0.0–v1.2.0，2026-11-16）
+### 17.2 历史验证（v1.0.0–v1.2.0，2026-11-16）
 
 - **编译**：12 模块 reactor BUILD SUCCESS。
 - **启动**：10 进程 allOk=true。
