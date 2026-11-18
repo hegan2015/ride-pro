@@ -25,6 +25,7 @@ import org.apache.ibatis.datasource.unpooled.UnpooledDataSource;
 import org.apache.ibatis.io.Resources;
 import org.apache.ibatis.jdbc.ScriptRunner;
 import org.apache.ibatis.mapping.Environment;
+import org.apache.ibatis.builder.xml.XMLMapperBuilder;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
@@ -71,12 +72,14 @@ class PaymentConsistencyTest {
         runner.runScript(new InputStreamReader(Resources.getResourceAsStream("schema.sql"), StandardCharsets.UTF_8));
         Configuration cfg = new Configuration(new Environment("test", new SpringManagedTransactionFactory(), ds));
         cfg.setMapUnderscoreToCamelCase(true);
+        cfg.setDatabaseId("h2");
+        for (String xml : new String[]{"mapper/LedgerMapper.xml", "mapper/WithdrawOrderMapper.xml"}) {
+            new XMLMapperBuilder(Resources.getResourceAsStream(xml), cfg, xml, cfg.getSqlFragments()).parse();
+        }
         cfg.addMapper(WalletMapper.class);
-        cfg.addMapper(LedgerMapper.class);
         cfg.addMapper(IdempotentMapper.class);
         cfg.addMapper(PayOutboxMapper.class);
         cfg.addMapper(RefundOutboxMapper.class);
-        cfg.addMapper(WithdrawOrderMapper.class);
         cfg.addMapper(MirrorOutboxMapper.class);
         cfg.addMapper(PaymentProAccountMapper.class);
         SqlSessionFactory factory = new SqlSessionFactoryBuilder().build(cfg);

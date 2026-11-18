@@ -18,6 +18,7 @@
 4. **双账本集成**（v1.5.0–v1.7.0，2026-11-17）：用户指令「双账本模式帮我改造，通过 https 的 api 对接」，在「钱包全托管 vs 双账本」中拍板**双账本**——ride 钱包本地权威，同事务 mirror_outbox 镜像到 payment-pro OpenAPI（HTTPS 8443 + HMAC）。后续「充值提现 pay 不都应该有一笔交易与支付单吗」「流水要能查总的并且要分页」→ 选**完整重构**：v1.6.0 同步回执、v1.7.0 充值/提现资金单 + 全局分页流水。pp 宕机不影响本地资金流，恢复自动追平。
 5. **文档权威**：DESIGN.md 为准，README.md 是其映射副本（GitHub 首页展示用）；DESIGN 更新后需手动重新同步 README。
 6. **git 听指令**：让提交才提交、让推送才推送；SSH 通道 `git@github.com:hegan2015/ride-pro.git`。嵌套克隆目录的删除经用户确认后执行。
+7. **Docker 中间件双模式**（2026-11-18）：用户指令「打车对接 docker 中间件」「zk 也对接」「依赖更新到 ops」，拍板范围 **ZK + MySQL**、对接**已有 claim-shared 栈**、数据**方案B 迁移现有 H2**（H2 文件保留）。零依赖默认模式不变（内嵌 ZK + H2），`run.sh --docker` 切容器 MySQL(3306, ride_* 5 库) + 容器 ZK(2182, claim-shared-zookeeper-ride)。方言策略：MERGE→ODKU 双兼容、nextId 走 XML databaseId(h2/mysql)、MySQL 序列=sequences 表+nextval() 函数（deploy/mysql-init.sql root 建）。迁移工具 deploy/MigrateH2ToMySQL.java（H2 只读、可重跑、行数比对）。密钥 ~/.config/ride-pro/docker.env（600），仓库只留 config/docker.env.example。共享 MySQL max_connections=400（compose 持久化），ride 每域池 5。**payment-pro 的 Docker 迁移由并行会话负责，本会话不碰。**
 
 ## 三、纠正与教训（用户纠正 → 规则）
 
@@ -28,6 +29,9 @@
 | stop.sh 先停 registry 致全员 SIGKILL | 停机顺序 gateway→业务域→registry 逐个停 |
 | 并行会话推进 DESIGN/端口/记忆 | 提交/交付/汇报前重读文件当前状态，勿信本会话快照 |
 | 用户 Chrome 常开司乘端页签 | 同身份会顶号，验证推送先查连接归属（lsof -nP -i :9101） |
+| ops 停 ride 超时 60s 杀掉 stop.sh 留 6 孤儿进程，再启成「混合模式」 | 多进程应用停止超时必须覆盖最坏（ops 已改 240s）；模式切换先停应用再停 ZK，勿在 ride 运行时先停 ZK（Dubbo shutdown 阻塞） |
+| pp 并行 Docker 迁移重播种致会员名漂移，ride 旧映射按名找不到账户 | 跨系统身份映射依赖对方数据稳定；漂移时经用户拍板删 ride 侧旧映射行（先备份）懒开户重建，不碰对方数据 |
+| verify-integration F 段重启 pp 不带 --docker 退回 local | 重启他系统须探测并继承其运行模式（pp_docker_mode() ps 探测） |
 
 ## 四、通用协作原则（四系统一致）
 
@@ -58,7 +62,7 @@
 ## 六、运行与构建速查
 
 - 构建：`JAVA_HOME=corretto-18`（release=17；默认 PATH java 26 会踩坑），`./mvnw clean package` 全量 reactor。
-- 启停：`./run.sh`（pid 检测跳过存活服务）/ `./stop.sh`（依赖倒序）。
+- 启停：`./run.sh`（pid 检测跳过存活服务）/ `./stop.sh`（依赖倒序）；`./run.sh --docker` 切容器 MySQL+ZK（密钥 ~/.config/ride-pro/docker.env，run/mode 标记供混沌重启继承；切换先停应用再动 ZK，2182 两模式互斥）。
 - 双账本启用：payment-pro 先起 → `./integrate-payment.sh` → 重启 ride；未配置 config/payment-pro.properties 时完全 standalone。
 - 验证：`run/chaos-test.sh`（12 节 60 项）、`verify-integration.py`（24 项，增量对账口径）。
 - 对账口径：pp 余额 == 开户基线快照 + SENT 镜像本地流水净额（绝对余额比对是错的）。

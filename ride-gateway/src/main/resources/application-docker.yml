@@ -1,0 +1,3 @@
+# docker profile：注册中心为容器 ZK（无 HTTP 探针），健康聚合改走 4lw ruok TCP 探测。
+registry:
+  health-url: "zk://127.0.0.1:${ZK_PORT:2182}"

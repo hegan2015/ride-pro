@@ -12,7 +12,6 @@ import java.util.List;
 @Mapper
 public interface PassengerMapper {
 
-    @Select("SELECT NEXT VALUE FOR seq_passenger")
     long nextId();
 
     @Insert("INSERT INTO passenger(id,name,phone,created_at) VALUES(#{id},#{name},#{phone},#{createdAt})")

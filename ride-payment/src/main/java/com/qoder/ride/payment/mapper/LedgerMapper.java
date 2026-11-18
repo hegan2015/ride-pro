@@ -14,7 +14,6 @@ import java.util.Map;
 @Mapper
 public interface LedgerMapper {
 
-    @Select("SELECT NEXT VALUE FOR seq_ledger")
     long nextId();
 
     @Insert("INSERT INTO ledger_entry(id,user_id,order_id,biz_type,amount,balance_after,request_id,created_at,status,pp_receipt) "

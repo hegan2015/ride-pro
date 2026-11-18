@@ -15,7 +15,8 @@ public interface IdempotentMapper {
             + "VALUES(#{requestId},#{bizType},#{resultJson},#{createdAt})")
     int insert(IdempotentRecordDO record);
 
-    @Insert("MERGE INTO idempotent_record(request_id,biz_type,result_json,created_at) KEY(request_id) "
-            + "VALUES(#{requestId},#{bizType},#{resultJson},#{createdAt})")
+    @Insert("INSERT INTO idempotent_record(request_id,biz_type,result_json,created_at) "
+            + "VALUES(#{requestId},#{bizType},#{resultJson},#{createdAt}) "
+            + "ON DUPLICATE KEY UPDATE biz_type=VALUES(biz_type), result_json=VALUES(result_json), created_at=VALUES(created_at)")
     int merge(IdempotentRecordDO record);
 }

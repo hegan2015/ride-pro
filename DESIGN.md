@@ -1,6 +1,14 @@
 # ride-pro 打车系统设计文档
 
-版本 v1.7.0 ｜ 2026-11-17 ｜ 状态：已实现，验证记录见 §17.0 与 §19.6
+版本 v1.8.0 ｜ 2026-11-18 ｜ 状态：已实现，验证记录见 §17.0、§19.6 与 §20.6
+
+v1.8.0 变更（**Docker 中间件双模式**，详见 §20）：
+- **双模式**：默认零依赖（内嵌 ZK + H2 文件库）完全保留；`./run.sh --docker` 切换 claim-shared 容器栈——MySQL 8（3306，ride_* 5 库）+ ZooKeeper 3.9（2182，独立容器与数据卷），docker 模式 9 进程（无内嵌 registry）。`run/mode` 标记供混沌脚本重启继承。
+- **方言双兼容**：4 处 MERGE→INSERT...ON DUPLICATE KEY UPDATE；5 个 nextId 改 XML `databaseId="h2"/"mysql"` 双语句（注解与 XML 不能共享 statement id）；MySQL 序列=sequences 表+nextval() 函数（原子行锁+连接局部，deploy/mysql-init.sql root 建）；每域 schema-mysql.sql 终态建表；Hikari 池 5/域（共享 MySQL max_connections=400）。
+- **数据迁移（方案B）**：deploy/MigrateH2ToMySQL.java 把现有 H2 数据只读迁往 MySQL（17 表行数比对+序列 base_value−increment 校准，可重跑）；**H2 文件原样保留**，随时可回内嵌模式（数据为迁移时点快照）。
+- **运维注册**：ops-pro Registry 新增 zookeeper-ride、mysql usedBy+ride-pro；ops 停应用超时 60s→240s（ride 10 进程逐个优雅停最坏 200s，曾超时杀脚本留孤儿进程）。
+- **密钥出仓库**：~/.config/ride-pro/docker.env（600），仓库只留 config/docker.env.example。
+- **验证**：单测 **41/41**；chaos **60/60**（docker）；verify-integration **24/24**（ride×pp 双 docker，F 段 pp 重启自动继承 --docker）；浏览器三端迁移数据实测；ops 中间件/应用启停 + 内嵌模式回归全过（§20.6）。
 
 v1.7.0 变更（充值/提现升级为**资金单**，详见 §19.3 与 payment-pro DESIGN §17）：
 - **充值/提现都有交易单+支付单**：镜像由 `account.topup`/`account.withdraw`（仅账务分录）切换为 `fund.topup`/`fund.withdraw`——payment-pro 走完整 TCC 生成交易单（biz_type=TOPUP/WITHDRAW）+ 支付单（SYS_FUND 系统资金商户、fee=0、BALANCE），与商户交易 PAY 同构。回执由账务分录 id/refKey 统一改为 **pp 支付单 id**，落 `ledger.pp_receipt`。
@@ -53,7 +61,7 @@ v1.1.0 变更：修复推送断连无补偿缺陷（connectWS 自动重连 + CON
 
 | 约束 | 落地方式 |
 |---|---|
-| 零外部部署依赖 | 注册中心用**内嵌 ZooKeeper**（进程内启动），数据库用 **H2 文件库**（每域独立库文件），无需安装任何中间件 |
+| 零外部部署依赖 | **默认模式**注册中心用**内嵌 ZooKeeper**（进程内启动），数据库用 **H2 文件库**（每域独立库文件），无需安装任何中间件；可选 `--docker` 模式复用 claim-shared 容器 MySQL/ZK（§20，用户拍板的显式例外，默认行为不变） |
 | 可直接运行 | `./run.sh` 一键编译 + 启动 10 进程 + 就绪等待；`./stop.sh` 一键优雅停止 |
 | 实时司乘体验 | Netty WebSocket 长连接推送（进程内库，非外部组件），H5 零安装由网关静态托管 |
 | 资金正确性 | 全链路金额以「分」为单位的 long 运算；单库本地事务原子转账；余额守卫防透支；幂等防重复入账 |
@@ -837,12 +845,13 @@ UriCapture 先存 URI → 握手完成事件触发 parseIdentity（路径段 [2]
 ### 16.1 启停
 
 ```bash
-./run.sh             # mvnw package -DskipTests + 启动 10 进程 + 就绪等待
+./run.sh             # 默认零依赖：mvnw package -DskipTests + 内嵌 ZK + H2，启动 10 进程 + 就绪等待
 ./run.sh --no-build  # 跳过编译
-./stop.sh            # 依赖序优雅停止，数据保留
+./run.sh --docker    # Docker 模式：容器 MySQL(ride_* 5 库) + 容器 ZK(2182)，9 进程（§20）
+./stop.sh            # 依赖序优雅停止，数据保留（两种模式通用）
 ```
 
-run.sh 流程：JAVA_HOME 优先 corretto-18（release=17；默认 PATH 的 java 26 不可用于构建）→ mkdir run/logs/data → registry 先启并等 8093/health（60s）→ 8 域顺次启动（不等就绪）→ gateway 启动等 8090（90s）→ 轮询 /api/health 的 allOk（120×2s）→ 打印三个 URL。pid 落 run/*.pid，日志落 logs/<域>.log。
+run.sh 流程：JAVA_HOME 优先 corretto-18（release=17；默认 PATH 的 java 26 不可用于构建）→ mkdir run/logs/data → 写 `run/mode`（embedded/docker，供混沌脚本重启继承）→ registry 先启并等 8093/health（60s，**docker 模式跳过内嵌 registry**，改探测容器 ZK 2182 ruok/imok 与 MySQL 3306 可达）→ 8 域顺次启动（不等就绪）→ gateway 启动等 8090（90s）→ 轮询 /api/health 的 allOk（120×2s）→ 打印三个 URL。pid 落 run/*.pid，日志落 logs/<域>.log。docker 模式先 `set -a; . ~/.config/ride-pro/docker.env` 注入 DB 口令并 `export SPRING_PROFILES_ACTIVE=docker`。
 
 **stop.sh 依赖序（关键约束）**：`gateway → dispatch → order → payment → push → location → pricing → driver → passenger → registry`，逐进程 SIGTERM + 20s 等待 + SIGKILL 兜底。**registry 必须最后停**：业务进程停机时若 ZK 已失联，Dubbo shutdown hook 会阻塞在注册中心销毁上（曾致全员 15s 后 SIGKILL）；改序后实测 28.7s 全优雅退出、零 SIGKILL。
 
@@ -985,3 +994,61 @@ payment-pro 网关双连接器：HTTP 8080（控制台）不变，HTTPS 8443（r
 `verify-integration.py` **24/24**：[A] 充值同步回执（双账本增量一致 + 流水 CONFIRMED 带 ppReceipt + **pp 资金单 TOPUP 交易单 PAID + 支付单** + 账务流水按 refId 可见）；[B] 订单全链路支付三方收敛 + pp 交易单 PAID + 平台抽成扣手续费；[C] 部分退款司机追回+平台兜底；[D] 提现同步出金 SUCCESS + **pp 资金单 WITHDRAW 交易单 PAID + 支付单** + pp D 向流水；[E] 回调留痕；[F] **混沌**（停 pp → 充值返回 PENDING 且钱包不动账 + PENDING 留痕 → 重启续传 CONFIRMED 双账本一致）；[G] ride 账面守恒 + 镜像队列清空 + pp 对账全过（结算 outbox 异步在途，对账轮询等待收敛）。单测 **19/19**（PaymentConsistencyTest 12 + PaymentSyncReceiptTest 7：充值回执确认/拒绝终态+可重试、支付三腿确认+outbox、通信失败 PENDING→Dispatcher 恢复、提现拒绝 FAILED 解冻、提现回执 SUCCESS 断言 pp 支付单 id、退款追回+乘客入账）。管理端流水「状态/支付回执」列浏览器实测渲染真实回执（充值/提现显示 pp 支付单 id）；jar 静态资源与源码一致；三端 H5 正常加载。
 
 联调修复记录：① 拒绝后同键重试撞 mirror_outbox 旧 FAILED 主键 → run 阶段 A 改 `upsert`（MERGE KEY(biz_no)）重置 NEW 重新驱动；② Mockito 对已 thenThrow 的 mock 重桩用 `doReturn().when()`（when() 会触发旧桩泄漏异常）；③ trade.create 增 outTradeNo 幂等消除重试孤儿单；④ 提现成功路径同步先扣 pp，pp 拒绝即 FAILED 解冻，根治历史超额提现 DEAD。
+
+---
+
+## 20. Docker 中间件双模式（v1.8.0）
+
+### 20.1 模式与范围
+
+用户拍板（2026-11-18）：ride 对接**已有 claim-shared Docker 栈**，范围 **ZK + MySQL**，数据**方案B 迁移现有 H2**。**默认零依赖模式完全保留**（内嵌 ZK + H2），`--docker` 为显式切换，不是替换。
+
+| 项 | 默认（embedded） | Docker 模式 |
+|---|---|---|
+| 启动 | `./run.sh` | `./run.sh --docker`（可叠 `--no-build`） |
+| 注册中心 | 内嵌 ZK（2182/8093，ride-registry 进程） | 容器 `claim-shared-zookeeper-ride`（2182→2181，独立数据卷） |
+| 数据库 | H2 文件库 data/*.mv.db | 容器 MySQL 8（3306，ride_passenger/driver/order/payment/location 5 库） |
+| 进程数 | 10 | 9（无 ride-registry） |
+| profile | 无 | `SPRING_PROFILES_ACTIVE=docker`（application-docker.yml 覆盖数据源/注册中心） |
+| 模式标记 | run/mode=embedded | run/mode=docker（chaos-test.sh 重启 order 时继承） |
+
+compose 权威定义在 **ops-pro/deploy/middleware-compose.yml**（与 claim/cs/payment 共享同一 MySQL 实例，单实例多库；ZK 打车独立容器，与 payment 的 2181 错开）。**停止不删数据**；删卷/重置须用户明确确认。密钥 `~/.config/ride-pro/docker.env`（目录 700/文件 600：DB_HOST/DB_PORT/DB_USER/DB_PASSWORD），仓库只留 `config/docker.env.example`。
+
+### 20.2 SQL 方言双兼容（同一套代码跑 H2 与 MySQL）
+
+- **MERGE→ODKU**：4 处 upsert 改 `INSERT ... ON DUPLICATE KEY UPDATE col=VALUES(col)`（H2 MODE=MySQL 与 MySQL 8 均支持）：driver_location、idempotent_record（order/payment 两域）、mirror_outbox。
+- **序列 nextId**：MyBatis **注解与 XML 不能共享 statement id**（databaseId 覆盖仅 XML-vs-XML 生效）→ 5 个 Mapper 接口（Passenger/Driver/Order/Ledger/WithdrawOrder）移除 `@Select`，改 `resources/mapper/*.xml` 双语句：`databaseId="h2"` 走 `SELECT NEXT VALUE FOR seq_x`，`databaseId="mysql"` 走 `SELECT nextval('seq_x')`；4 个 Application 注册 `VendorDatabaseIdProvider`（H2→h2、MySQL→mysql），`mybatis.mapper-locations=classpath:mapper/*.xml`。location 域无序列不改。
+- **MySQL 序列仿真**：`sequences(name PK, val)` 表 + `nextval()` 函数——`UPDATE sequences SET val=LAST_INSERT_ID(val+1) WHERE name=seq; RETURN LAST_INSERT_ID()`，行锁原子 + LAST_INSERT_ID 连接局部，并发安全。函数由 **deploy/mysql-init.sql 以 root 建**（需 `log_bin_trust_function_creators=1`，compose 已持久化该参数）；ride 账号库级 ALL 含 EXECUTE。**种子 val=0**：首次 nextval=1，与 H2 `START WITH 1` 首调一致。
+- **建表**：每域 `schema-mysql.sql` 终态 `CREATE TABLE IF NOT EXISTS`（含全部历史增量列与内联索引；MySQL 索引不支持 IF NOT EXISTS，CLOB→TEXT），`spring.sql.init.schema-locations` 按 profile 切换；H2 路径沿用原 schema.sql 幂等增量。
+- **连接池**：共享 MySQL `max_connections=400`（compose 持久化），ride 每域 Hikari 池 **5**，与 claim/cs/payment 同实例共存（实测总连接约 46）。JDBC URL `useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai`，mysql-connector-j 8.3.0（Boot BOM）。
+
+### 20.3 注册中心与健康探测
+
+docker 模式 Dubbo registry 指向容器 ZK 2182；gateway `registry.health-url: zk://127.0.0.1:2182`，HealthService 对 `zk://` 前缀走 **TCP 四字探针**（connect 1.5s → 写 `ruok` → 读回含 `imok`），其余沿用 HTTP /health（内嵌模式 8093）。run.sh docker 分支启动前预检 ZK ruok 与 MySQL 端口可达，缺失即报错退出。
+
+### 20.4 数据迁移（方案B，H2 文件保留）
+
+`deploy/MigrateH2ToMySQL.java`（单文件源码直跑，`java -cp h2.jar:mysql-connector-j.jar deploy/MigrateH2ToMySQL.java`，先导出 docker.env）：
+
+- H2 **只读**打开（`ACCESS_MODE_DATA=r`），17 表逐表 TRUNCATE + 批量 INSERT（500/批，`rewriteBatchedStatements=true`，CLOB→getString），**行数比对**不一致即退出码 1；可重跑。
+- 序列校准：H2 2.2 的 information_schema.sequences **无 current_value 列**，`CURRENT VALUE FOR` 又是会话局部——正确口径 **val = base_value − increment**（默认 cache=1），迁后 MySQL  nextval 与 H2 下一值严格衔接（实测 5 域序列 2/3/3/34/4）。
+- **H2 文件原样保留**（迁移只读不写）：内嵌模式随时可回，数据为迁移时点冻结快照；两模式数据各自演进，不做双向同步。
+
+### 20.5 运维注册与模式切换（ops-pro）
+
+ops-pro Registry：mysql usedBy +ride-pro（ride_* 按域分库），新增 `zookeeper-ride`（2182，compose 服务 zookeeper-ride）。应用启停经 ops 调 ride run.sh/stop.sh；**ops 停应用脚本超时 240s**（AppService，ride 10 进程逐个优雅停最坏 10×20s=200s；原 60s 曾把 stop.sh 中途杀掉留 6 个孤儿域进程，run.sh 再启时跳过存活进程造成「混合模式」）。
+
+模式切换顺序（**ZK 端口 2182 两模式互斥**）：
+- docker→embedded：ops 停 ride → ops 停 zookeeper-ride（释放 2182）→ ops 启 ride（run.sh 默认内嵌）。
+- embedded→docker：ops 停 ride → ops 启 zookeeper-ride → `./run.sh --docker --no-build`。
+- **勿在 ride 运行时先停 ZK**：业务进程 Dubbo shutdown hook 会阻塞在注册中心销毁上（stop.sh 注释同理），导致停机超时。
+
+### 20.6 验证记录（2026-11-18，v1.8.0）
+
+- **单测 41/41**（全量 `clean package`，H2 路径；payment 两测试类显式 `cfg.setDatabaseId("h2")` + XMLMapperBuilder 装配 XML）。
+- **混沌 60/60**（docker 模式，chaos-test.sh 12 节；重启块按 run/mode 继承 docker.env+profile；outbox 断言改 30×1s 轮询消除退避竞态）。
+- **verify-integration 24/24**（ride docker × pp docker）：A 充值资金单回执 / B 订单三方收敛+平台抽成扣手续费 / C 部分退款追回+兜底 / D 提现资金单出金 / E 回调留痕 / F 停 pp→PENDING 不动账→重启续传 CONFIRMED / G 两边对账全过。
+- **容器 ZK 注册树**：zkCli ls /dubbo 9 个 facade 全注册；jar 内静态页与源码 diff 一致。
+- **浏览器三端**（evaluate_script 隔离驱动）：乘客 P1 钱包 ¥5387.80+迁移流水渲染、司机 D1 收入 ¥199.17+11-17 提现记录、管理端账面守恒/outbox 0/服务健康（registry zk:// 探针正常），WS 均实时在线。
+- **ops 启停实测**：停 zookeeper-ride → gateway registry.ok=false 正确降级 → 启动恢复 allOk；经 ops 停/启 ride 回归**内嵌默认模式**（10 进程、P1=341336 恰为 H2 冻结快照值，证明读 H2 而非 MySQL）；恢复 docker 后 P1=538780、mirror 0/0、账面守恒。
+- **联调修复记录**：① pp 并行 Docker 迁移重新播种致会员名漂移（M2 不再叫 P1），ride 旧映射按名找不到 pp 账户 → 用户拍板删 ride 侧 6 行旧映射（D1/D2/D3/P1/P2，备份 ~/.config/ride-pro/pp-account-mapping-backup-1941.sql，保留 SYS_PLATFORM→商户 A1），懒开户自动重建后 24/24；② verify F 段重启 pp 原不带 --docker 会退回 local → 脚本新增 `pp_docker_mode()` 探测（ps 命令行 -Dspring.profiles.active / 环境变量）自动继承；③ ops stop 超时 60→240s（见 §20.5）；④ pp 商户 appSecret 漂移致签名 400 → ride config/payment-pro.properties 对齐 pp 库值。

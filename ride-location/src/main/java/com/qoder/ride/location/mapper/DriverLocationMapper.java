@@ -12,8 +12,8 @@ import java.util.List;
 public interface DriverLocationMapper {
 
     /** 上报即覆盖（最新位置权威）。 */
-    @Update("MERGE INTO driver_location(driver_id,lat,lng,updated_at) KEY(driver_id) "
-            + "VALUES(#{driverId},#{lat},#{lng},#{updatedAt})")
+    @Update("INSERT INTO driver_location(driver_id,lat,lng,updated_at) VALUES(#{driverId},#{lat},#{lng},#{updatedAt}) "
+            + "ON DUPLICATE KEY UPDATE lat=VALUES(lat), lng=VALUES(lng), updated_at=VALUES(updated_at)")
     int upsert(DriverLocationDO location);
 
     @Select("SELECT * FROM driver_location WHERE driver_id=#{driverId}")

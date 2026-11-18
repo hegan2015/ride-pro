@@ -114,6 +114,19 @@ def converge(uid, base, expect_delta=None, timeout=90):
     return rb - base[0], pb - base[1]
 
 
+def pp_docker_mode():
+    """探测 payment-pro 当前是否 docker profile（重启时继承，避免退回 local）。"""
+    try:
+        pid = open(os.path.join(PAY_ROOT, "run", "gateway.pid")).read().strip()
+        cmd = subprocess.run(["ps", "-p", pid, "-o", "command="], capture_output=True, text=True).stdout
+        if "spring.profiles.active=docker" in cmd:
+            return True
+        env = subprocess.run(["ps", "eww", "-p", pid, "-o", "command="], capture_output=True, text=True).stdout
+        return "SPRING_PROFILES_ACTIVE=docker" in env
+    except Exception:
+        return False
+
+
 def main():
     print(f"== ride-pro × payment-pro 双账本集成验证（批次 {SUFFIX}）==")
     assert req(RIDE, "GET", "/api/health")[0] == 200, "ride-pro 未启动"
@@ -222,6 +235,7 @@ def main():
     check("ride 收到 payment-pro 回调留痕", "payment-pro 通知留痕" in log or "payment-pro 通知幂等命中" in log)
 
     print("[F] 混沌：停 payment-pro → ride 充值落 PENDING 不动账 → 重启后续传回执确认")
+    pp_was_docker = pp_docker_mode()
     pp_balance_cached = pp_balance(p)
     subprocess.run([os.path.join(PAY_ROOT, "stop.sh")], cwd=PAY_ROOT, check=True, capture_output=True)
     time.sleep(2)
@@ -232,7 +246,10 @@ def main():
     check("宕机期间钱包不动账（回执未确认）", ride_balance(p) == base[0], f"balance={ride_balance(p)} base={base[0]}")
     led = ok(RIDE, "GET", f"/api/admin/ledger?userId={p}&size=50", headers=ADMIN)["items"]
     check("宕机期间流水 PENDING 留痕", any(e["requestId"] == f"it-down-{SUFFIX}" and e["status"] == "PENDING" for e in led))
-    subprocess.run([os.path.join(PAY_ROOT, "run.sh"), "--no-build"], cwd=PAY_ROOT, check=True, capture_output=True)
+    run_cmd = [os.path.join(PAY_ROOT, "run.sh"), "--no-build"]
+    if pp_was_docker:
+        run_cmd.insert(1, "--docker")
+    subprocess.run(run_cmd, cwd=PAY_ROOT, check=True, capture_output=True)
     poll(lambda: req(PAY, "GET", "/api/health")[0], lambda st: st == 200, timeout=180, interval=2)
     dr, dp = converge(p, base, 5000, timeout=120)
     check("恢复后续传确认双账本增量一致", dr == dp == 5000, f"rideΔ={dr} ppΔ={dp}")

@@ -17,8 +17,11 @@ public interface MirrorOutboxMapper {
     int insert(MirrorOutboxDO row);
 
     /** 拒绝后重试：FAILED 记录重置为 NEW 重新驱动（幂等占位已清除，不会与在途请求冲突）。 */
-    @Insert("MERGE INTO mirror_outbox(biz_no,biz_type,ref_key,user_id,order_id,status,retries,next_retry_at,pp_order_id,pp_payment_id,last_error,created_at) "
-            + "KEY(biz_no) VALUES(#{bizNo},#{bizType},#{refKey},#{userId},#{orderId},#{status},#{retries},#{nextRetryAt},#{ppOrderId},#{ppPaymentId},#{lastError},#{createdAt})")
+    @Insert("INSERT INTO mirror_outbox(biz_no,biz_type,ref_key,user_id,order_id,status,retries,next_retry_at,pp_order_id,pp_payment_id,last_error,created_at) "
+            + "VALUES(#{bizNo},#{bizType},#{refKey},#{userId},#{orderId},#{status},#{retries},#{nextRetryAt},#{ppOrderId},#{ppPaymentId},#{lastError},#{createdAt}) "
+            + "ON DUPLICATE KEY UPDATE biz_type=VALUES(biz_type), ref_key=VALUES(ref_key), user_id=VALUES(user_id), order_id=VALUES(order_id), "
+            + "status=VALUES(status), retries=VALUES(retries), next_retry_at=VALUES(next_retry_at), pp_order_id=VALUES(pp_order_id), "
+            + "pp_payment_id=VALUES(pp_payment_id), last_error=VALUES(last_error), created_at=VALUES(created_at)")
     int upsert(MirrorOutboxDO row);
 
     @Select("SELECT * FROM mirror_outbox WHERE biz_no=#{bizNo}")

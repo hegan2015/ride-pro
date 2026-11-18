@@ -1,7 +1,18 @@
 #!/bin/bash
 # 一键编译并启动全部服务：内嵌注册中心 → 8 个业务域 → 网关（含司乘端 H5）
+# --docker：改用 claim-shared 容器 MySQL + 容器 ZooKeeper(2182)，跳过内嵌 registry（9 进程）。
+# --no-build：跳过编译。默认模式零外部依赖（H2 + 内嵌 ZK）。
 set -e
 cd "$(dirname "$0")"
+
+DOCKER_MODE=0
+NO_BUILD=0
+for arg in "$@"; do
+  case "$arg" in
+    --docker) DOCKER_MODE=1 ;;
+    --no-build) NO_BUILD=1 ;;
+  esac
+done
 
 if [ -d "/Users/hegan/Library/Java/JavaVirtualMachines/corretto-18.0.2/Contents/Home" ]; then
   export JAVA_HOME="/Users/hegan/Library/Java/JavaVirtualMachines/corretto-18.0.2/Contents/Home"
@@ -12,7 +23,28 @@ echo "JAVA_HOME=$JAVA_HOME"
 
 mkdir -p run logs data
 
-if [ "$1" != "--no-build" ]; then
+if [ "$DOCKER_MODE" = "1" ]; then echo docker > run/mode; else echo embedded > run/mode; fi
+
+if [ "$DOCKER_MODE" = "1" ]; then
+  ENV_FILE="$HOME/.config/ride-pro/docker.env"
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "!! 缺少 $ENV_FILE（参考 config/docker.env.example 创建，chmod 600）"
+    exit 1
+  fi
+  set -a; . "$ENV_FILE"; set +a
+  export SPRING_PROFILES_ACTIVE=docker
+  if ! echo ruok | nc -w 2 127.0.0.1 "${ZK_PORT:-2182}" 2>/dev/null | grep -q imok; then
+    echo "!! 容器 ZooKeeper(${ZK_PORT:-2182}) 未就绪：cd ../ops-pro/deploy && docker compose -f middleware-compose.yml up -d zookeeper-ride"
+    exit 1
+  fi
+  if ! nc -z -w 2 "${DB_HOST:-127.0.0.1}" "${DB_PORT:-3306}" 2>/dev/null; then
+    echo "!! MySQL(${DB_HOST:-127.0.0.1}:${DB_PORT:-3306}) 未就绪：cd ../ops-pro/deploy && docker compose -f middleware-compose.yml up -d mysql"
+    exit 1
+  fi
+  echo "==> Docker 模式：MySQL(${DB_HOST:-127.0.0.1}:${DB_PORT:-3306}) + 容器 ZK(${ZK_PORT:-2182})，跳过内嵌 registry"
+fi
+
+if [ "$NO_BUILD" != "1" ]; then
   echo "==> 编译打包（Maven Wrapper）..."
   ./mvnw package -DskipTests -q
 fi
@@ -41,8 +73,10 @@ wait_http() {
   return 1
 }
 
-start registry ride-registry
-wait_http "http://127.0.0.1:${ZK_HTTP_PORT:-8093}/health" registry 60
+if [ "$DOCKER_MODE" != "1" ]; then
+  start registry ride-registry
+  wait_http "http://127.0.0.1:${ZK_HTTP_PORT:-8093}/health" registry 60
+fi
 
 for svc in passenger driver location pricing order dispatch payment push; do
   start "$svc" "ride-$svc"
@@ -56,7 +90,7 @@ for ((i=0; i<120; i++)); do
   ready=$(curl -sf --max-time 5 "http://127.0.0.1:${GATEWAY_PORT:-8090}/api/health" \
     | python3 -c 'import sys,json; print("yes" if json.load(sys.stdin).get("allOk") else "no")' 2>/dev/null || echo "no")
   if [ "$ready" = "yes" ]; then
-    echo "==> 全部 10 个进程健康 ✔"
+    echo "==> 全部进程健康 ✔"
     echo "==> 门户首页: http://127.0.0.1:${GATEWAY_PORT:-8090}/"
     echo "==> 乘客端:   http://127.0.0.1:${GATEWAY_PORT:-8090}/passenger.html"
     echo "==> 司机端:   http://127.0.0.1:${GATEWAY_PORT:-8090}/driver.html"

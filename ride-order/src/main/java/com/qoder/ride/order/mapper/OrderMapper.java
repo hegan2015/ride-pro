@@ -14,7 +14,6 @@ import java.util.Map;
 @Mapper
 public interface OrderMapper {
 
-    @Select("SELECT NEXT VALUE FOR seq_order")
     long nextId();
 
     @Insert("INSERT INTO ride_order(id,passenger_id,passenger_name,driver_id,driver_name,driver_car_no,"

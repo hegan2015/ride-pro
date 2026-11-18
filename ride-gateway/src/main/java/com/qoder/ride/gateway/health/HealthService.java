@@ -6,10 +6,13 @@ import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -81,6 +84,19 @@ public class HealthService {
 
     private boolean registryUp() {
         try {
+            // docker 模式注册中心是容器 ZK（无 HTTP 探针），走 4lw ruok TCP 探测。
+            if (registryHealthUrl.startsWith("zk://")) {
+                URI uri = URI.create(registryHealthUrl);
+                try (Socket socket = new Socket()) {
+                    socket.connect(new InetSocketAddress(uri.getHost(), uri.getPort()), 1500);
+                    socket.setSoTimeout(1500);
+                    socket.getOutputStream().write("ruok\n".getBytes(StandardCharsets.UTF_8));
+                    socket.getOutputStream().flush();
+                    byte[] buf = new byte[16];
+                    int n = socket.getInputStream().read(buf);
+                    return n > 0 && new String(buf, 0, n, StandardCharsets.UTF_8).contains("imok");
+                }
+            }
             HttpRequest request = HttpRequest.newBuilder(URI.create(registryHealthUrl))
                     .timeout(Duration.ofMillis(1500)).GET().build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());

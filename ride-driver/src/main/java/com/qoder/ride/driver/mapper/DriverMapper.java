@@ -12,7 +12,6 @@ import java.util.List;
 @Mapper
 public interface DriverMapper {
 
-    @Select("SELECT NEXT VALUE FOR seq_driver")
     long nextId();
 
     @Insert("INSERT INTO driver(id,name,phone,car_no,car_model,status,service_type,service_score,decline_count,created_at,updated_at) "

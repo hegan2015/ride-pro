@@ -12,7 +12,6 @@ import java.util.List;
 @Mapper
 public interface WithdrawOrderMapper {
 
-    @Select("SELECT NEXT VALUE FOR seq_withdraw")
     long nextId();
 
     @Insert("INSERT INTO withdraw_order(id,user_id,amount,status,biz_no,fail_reason,created_at,updated_at) "

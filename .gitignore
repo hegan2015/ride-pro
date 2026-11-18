@@ -4,7 +4,9 @@ target/
 # 运行时数据与日志（H2 库文件只增不删，不入库）
 data/
 logs/
+logs-backup-*/
 run/*.pid
+run/mode
 nohup.out
 
 # IDE

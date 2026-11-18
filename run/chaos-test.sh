@@ -248,6 +248,10 @@ if [ -f run/order.pid ] && kill -0 "$(cat run/order.pid)" 2>/dev/null; then
   else
     export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
   fi
+  if [ "$(cat run/mode 2>/dev/null)" = "docker" ]; then
+    set -a; . "$HOME/.config/ride-pro/docker.env"; set +a
+    export SPRING_PROFILES_ACTIVE=docker
+  fi
   nohup "$JAVA_HOME/bin/java" -jar ride-order/target/ride-order-1.0.0.jar >> logs/order.log 2>&1 &
   echo $! > run/order.pid
   say "  order 已重启 (pid $(cat run/order.pid))，等待注册与对账..."
@@ -269,8 +273,14 @@ if [ -f run/order.pid ] && kill -0 "$(cat run/order.pid)" 2>/dev/null; then
   check "$ST" "PAID" "崩溃窗口后订单最终 PAID"
   req GET "/api/wallets/$P/ledger?orderId=$OID&bizType=PAY_DEBIT&size=10"
   check "$(jget "d['total']")" "1" "崩溃窗口支付仍只扣一次"
-  req GET /api/admin/outbox "" "X-Admin-Token: $ADMIN_TOKEN"
-  check "$(jget "d['pendingCount']")" "0" "outbox 全部投递完成"
+  OUTBOX_PENDING=1
+  for ((i=0; i<30; i++)); do
+    req GET /api/admin/outbox "" "X-Admin-Token: $ADMIN_TOKEN"
+    OUTBOX_PENDING=$(jget "d['pendingCount']")
+    [ "$OUTBOX_PENDING" = "0" ] && break
+    sleep 1
+  done
+  check "$OUTBOX_PENDING" "0" "outbox 全部投递完成"
   req GET /api/admin/audit "" "X-Admin-Token: $ADMIN_TOKEN"
   check "$(jget "all(a['ok'] for a in d)")" "True" "混沌后账面仍守恒"
 else
@@ -301,6 +311,10 @@ if [ -f run/order.pid ] && kill -0 "$(cat run/order.pid)" 2>/dev/null; then
   else
     export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
   fi
+  if [ "$(cat run/mode 2>/dev/null)" = "docker" ]; then
+    set -a; . "$HOME/.config/ride-pro/docker.env"; set +a
+    export SPRING_PROFILES_ACTIVE=docker
+  fi
   nohup "$JAVA_HOME/bin/java" -jar ride-order/target/ride-order-1.0.0.jar >> logs/order.log 2>&1 &
   echo $! > run/order.pid
   say "  order 已重启 (pid $(cat run/order.pid))，等待注册与投递..."
@@ -323,8 +337,14 @@ if [ -f run/order.pid ] && kill -0 "$(cat run/order.pid)" 2>/dev/null; then
   check "$RK_ST" "REFUNDED" "退款崩溃窗口后订单最终 REFUNDED"
   req GET "/api/wallets/$P/ledger?orderId=$RK_OID&bizType=REFUND_CREDIT&size=10"
   check "$(jget "d['total']")" "1" "崩溃窗口退款只退一次"
-  req GET /api/admin/outbox "" "X-Admin-Token: $ADMIN_TOKEN"
-  check "$(jget "d['pendingCount']")" "0" "支付+退款 outbox 全部投递完成"
+  OUTBOX_PENDING=1
+  for ((i=0; i<30; i++)); do
+    req GET /api/admin/outbox "" "X-Admin-Token: $ADMIN_TOKEN"
+    OUTBOX_PENDING=$(jget "d['pendingCount']")
+    [ "$OUTBOX_PENDING" = "0" ] && break
+    sleep 1
+  done
+  check "$OUTBOX_PENDING" "0" "支付+退款 outbox 全部投递完成"
   req GET /api/admin/audit "" "X-Admin-Token: $ADMIN_TOKEN"
   check "$(jget "all(a['ok'] for a in d)")" "True" "退款混沌后账面仍守恒"
 else

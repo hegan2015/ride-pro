@@ -17,8 +17,9 @@ public interface IdempotentMapper {
     int insert(IdempotentRecordDO record);
 
     /** 幂等 upsert：提现单终态回填最新钱包视图等场景。 */
-    @Insert("MERGE INTO idempotent_record(request_id,biz_type,result_json,created_at) KEY(request_id) "
-            + "VALUES(#{requestId},#{bizType},#{resultJson},#{createdAt})")
+    @Insert("INSERT INTO idempotent_record(request_id,biz_type,result_json,created_at) "
+            + "VALUES(#{requestId},#{bizType},#{resultJson},#{createdAt}) "
+            + "ON DUPLICATE KEY UPDATE biz_type=VALUES(biz_type), result_json=VALUES(result_json), created_at=VALUES(created_at)")
     int merge(IdempotentRecordDO record);
 
     /** 支付系统明确拒绝后清除占位，允许调用方以同一幂等键重新发起。 */
