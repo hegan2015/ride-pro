@@ -19,8 +19,21 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PAY_ROOT = os.path.abspath(os.path.join(ROOT, "..", "payment-pro"))
 SUFFIX = uuid.uuid4().hex[:6]
 ADMIN = {"X-Admin-Token": "ride-admin"}
+PAY_TOKEN = None
 PASSED = 0
 FAILED = 0
+
+
+def pay_password():
+    pw = os.environ.get("PP_CONSOLE_PASSWORD")
+    if pw:
+        return pw
+    cfg = os.path.expanduser("~/.config/ride-pro/pp-console.env")
+    if os.path.isfile(cfg):
+        for line in open(cfg):
+            if line.startswith("PP_CONSOLE_PASSWORD="):
+                return line.strip().split("=", 1)[1]
+    raise SystemExit("缺少 pp 控制台口令：设置 PP_CONSOLE_PASSWORD 或 ~/.config/ride-pro/pp-console.env")
 
 
 def check(name, cond, detail=""):
@@ -36,6 +49,8 @@ def check(name, cond, detail=""):
 def req(base, method, path, body=None, headers=None):
     data = json.dumps(body).encode() if body is not None else None
     h = {"Content-Type": "application/json"}
+    if base == PAY and PAY_TOKEN:
+        h["Authorization"] = "Bearer " + PAY_TOKEN
     if headers:
         h.update(headers)
     r = urllib.request.Request(base + path, data=data, method=method, headers=h)
@@ -128,9 +143,14 @@ def pp_docker_mode():
 
 
 def main():
+    global PAY_TOKEN
     print(f"== ride-pro × payment-pro 双账本集成验证（批次 {SUFFIX}）==")
     assert req(RIDE, "GET", "/api/health")[0] == 200, "ride-pro 未启动"
     assert req(PAY, "GET", "/api/health")[0] == 200, "payment-pro 未启动"
+    st, login = req(PAY, "POST", "/api/auth/login",
+                    {"username": os.environ.get("PP_CONSOLE_USER", "admin"), "password": pay_password()})
+    assert st == 200 and login.get("token"), f"payment-pro 控制台登录失败: {login}"
+    PAY_TOKEN = login["token"]
     assert os.path.isfile(os.path.join(ROOT, "config", "payment-pro.properties")), "请先执行 ./integrate-payment.sh 并重启 ride-pro"
     merch_acc = merchant_account()
     merch0 = ok(PAY, "GET", f"/api/accounting/accounts/{merch_acc}/balance")

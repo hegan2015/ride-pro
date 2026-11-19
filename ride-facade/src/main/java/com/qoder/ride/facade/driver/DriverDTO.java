@@ -23,6 +23,8 @@ public class DriverDTO implements Serializable {
     /** 服务分（乘客评价滚动均分，初始 5.0）。 */
     private Double serviceScore;
     private Integer declineCount;
+    /** 管理端封禁标记：禁止出车/接单。 */
+    private Boolean blocked;
     private Long createdAt;
     /** 最近状态变更时刻（BUSY 司机回收宽限判定）。 */
     private Long updatedAt;

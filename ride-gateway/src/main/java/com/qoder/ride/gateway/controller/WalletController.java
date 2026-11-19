@@ -31,6 +31,12 @@ public class WalletController {
         return GatewaySupport.of(paymentFacade.withdraw(request));
     }
 
+    /** 通用划转（打赏/调度费等）：幂等 requestId，双流水。 */
+    @PostMapping("/transfer")
+    public ResponseEntity<Object> transfer(@RequestBody com.qoder.ride.facade.payment.TransferRequest request) {
+        return GatewaySupport.of(paymentFacade.transfer(request));
+    }
+
     @GetMapping("/{userId}")
     public ResponseEntity<Object> wallet(@PathVariable String userId) {
         return GatewaySupport.of(paymentFacade.wallet(userId));

@@ -14,6 +14,7 @@ public class DriverDO {
     private String serviceType;
     private Double serviceScore;
     private Integer declineCount;
+    private Boolean blocked;
     private Long createdAt;
     private Long updatedAt;
 }

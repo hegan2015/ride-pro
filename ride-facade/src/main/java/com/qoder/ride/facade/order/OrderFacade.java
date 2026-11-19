@@ -31,6 +31,9 @@ public interface OrderFacade {
     /** 乘客支付（COMPLETED→PAID）。订单维度幂等（PAY-{orderId}），同一订单只扣款一次。 */
     Result<OrderDTO> pay(String orderId);
 
+    /** 乘客支付（带支付渠道标记：WALLET/WECHAT/ALIPAY/CARD，非钱包渠道为演示标记）。 */
+    Result<OrderDTO> pay(String orderId, String channel);
+
     /** 支付成功事件回调（支付域 outbox 投递）：COMPLETED 则幂等完结，已 PAID 则无操作。 */
     Result<OrderDTO> onPaySucceeded(String orderId);
 
@@ -47,6 +50,12 @@ public interface OrderFacade {
     Result<RatingDTO> rate(RatingRequest request);
 
     Result<List<RatingDTO>> ratings(String orderId);
+
+    /** 司机口碑聚合：该司机近期订单的乘客评价。 */
+    Result<List<RatingDTO>> driverRatings(String driverId);
+
+    /** 行程中修改目的地：重新计价并更新预估，推送司乘。 */
+    Result<OrderDTO> modifyDest(String orderId, String destName, Double destLat, Double destLng);
 
     /** 管理端退款（可部分）：amount 缺省退剩余全额；反向划转（REFUND-{orderId}-{seq} 幂等），
      *  累计退满置 REFUNDED，崩溃窗口由退款 outbox + 对账兜底。 */

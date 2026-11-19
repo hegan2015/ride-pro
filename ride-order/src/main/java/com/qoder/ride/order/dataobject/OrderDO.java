@@ -24,6 +24,11 @@ public class OrderDO {
     private String requestId;
     private String cancelReason;
     private String serviceType;
+    /** 多车型接力备选（逗号分隔）。 */
+    private String fallbackTypes;
+    private String comfort;
+    private Long tipFee;
+    private String payChannel;
     private String fareJson;
     private Double actualDistanceKm;
     private Long actualDurationMin;

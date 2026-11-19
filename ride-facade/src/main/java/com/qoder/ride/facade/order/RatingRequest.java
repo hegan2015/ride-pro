@@ -18,4 +18,8 @@ public class RatingRequest implements Serializable {
     /** 1~5 星。 */
     private Integer score;
     private String comment;
+    /** 标签化评价（逗号分隔，如 车内整洁,驾驶平稳）。 */
+    private String tags;
+    /** 匿名评价。 */
+    private Boolean anonymous;
 }

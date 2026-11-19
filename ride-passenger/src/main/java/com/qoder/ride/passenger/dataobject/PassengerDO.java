@@ -9,5 +9,6 @@ public class PassengerDO {
     private String name;
     private String phone;
     private Boolean autoPay;
+    private Boolean blocked;
     private Long createdAt;
 }

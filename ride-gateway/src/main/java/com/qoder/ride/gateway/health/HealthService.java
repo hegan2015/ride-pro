@@ -40,6 +40,8 @@ public class HealthService {
     private HealthFacade paymentHealth;
     @DubboReference(group = "ride-push", timeout = 1500, check = false)
     private HealthFacade pushHealth;
+    @DubboReference(group = "ride-support", timeout = 1500, check = false)
+    private HealthFacade supportHealth;
 
     @Value("${registry.health-url}")
     private String registryHealthUrl;
@@ -57,6 +59,7 @@ public class HealthService {
         services.add(row("ride-dispatch", 20906, ping(dispatchHealth)));
         services.add(row("ride-payment", 20907, ping(paymentHealth)));
         services.add(row("ride-push", 20908, ping(pushHealth)));
+        services.add(row("ride-support", 20910, ping(supportHealth)));
         boolean registryOk = registryUp();
         boolean allOk = registryOk && services.stream().allMatch(s -> Boolean.TRUE.equals(s.get("ok")));
         Map<String, Object> result = new LinkedHashMap<>();

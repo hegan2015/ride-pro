@@ -27,4 +27,7 @@ public interface DriverFacade {
 
     /** 拒单计数 +1（派单评分降权）。 */
     Result<Void> recordDecline(String driverId);
+
+    /** 管理端封禁/解封（封禁时强制下线）。 */
+    Result<DriverDTO> setBlocked(String driverId, boolean blocked);
 }

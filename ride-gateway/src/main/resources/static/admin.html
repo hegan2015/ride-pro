@@ -26,6 +26,14 @@
       <button data-tab="wallets">👛 钱包总览</button>
       <button data-tab="logs">🖥️ 系统日志</button>
       <button data-tab="consistency">🔍 一致性监控</button>
+      <button data-tab="mirror">🔁 双账本镜像</button>
+      <button data-tab="users">👥 用户与司机</button>
+      <button data-tab="config">⚙️ 配置中心</button>
+      <button data-tab="coupons">🎟️ 优惠券</button>
+      <button data-tab="risk">🛡️ 风控安全</button>
+      <button data-tab="tickets">🎧 客服工单</button>
+      <button data-tab="rbac">🔐 权限审计</button>
+      <button data-tab="reports">📈 报表趋势</button>
     </div>
 
     <!-- 仪表盘 -->
@@ -42,6 +50,11 @@
         <div id="statusDist" style="margin-top:14px"></div>
       </div>
       <div class="grid cols-2">
+        <div class="card">
+          <h2><span class="dot"></span>实时运力大屏 <span class="muted small" id="liveCount"></span></h2>
+          <canvas class="map big" id="liveMap" style="height:260px"></canvas>
+          <p class="muted small">每 5 秒刷新在线司机位置（蓝=听单 橙=服务中）。</p>
+        </div>
         <div class="card">
           <h2><span class="dot"></span>资金统计（按流水类型）</h2>
           <div class="table-scroll"><table class="table">
@@ -104,12 +117,24 @@
           <div><label>结束日期</label><input type="date" id="oTo"></div>
           <button id="oSearch">查询</button>
         </div>
+        <div class="btns" id="oBatch" style="display:none">
+          <button class="red" id="oBatchForce">批量强制取消</button>
+          <button class="amber" id="oBatchRefund">批量全额退款</button>
+          <span class="muted small" id="oBatchCount"></span>
+        </div>
         <div class="table-scroll"><table class="table">
-          <thead><tr><th>订单</th><th>乘客</th><th>司机</th><th>行程</th><th>状态</th><th>预估/实际</th><th>叫车时间</th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="oAll" style="width:auto"></th><th>订单</th><th>乘客</th><th>司机</th><th>行程</th><th>状态</th><th>预估/实际</th><th>叫车时间</th></tr></thead>
           <tbody id="ordersBody"></tbody>
         </table></div>
         <div class="pager" id="ordersPager"></div>
         <p class="muted small">点击行查看详情并处置：已支付可退款（反向划转+对账兜底），进行中异常单可强制取消。</p>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="spread"><h2 style="margin:0"><span class="dot"></span>退款审批流</h2><button id="btnRrRefresh">刷新</button></div>
+        <div class="table-scroll" style="margin-top:12px"><table class="table">
+          <thead><tr><th>申请</th><th>订单</th><th>金额</th><th>原因</th><th>申请人</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="rrBody"></tbody>
+        </table></div>
       </div>
     </div>
 
@@ -177,6 +202,141 @@
         </div>
       </div>
     </div>
+    <!-- 双账本镜像 -->
+    <div class="tabpane" id="pane-mirror">
+      <div class="card" style="margin-bottom:16px">
+        <div class="spread"><h2 style="margin:0"><span class="dot"></span>payment-pro 双账本镜像投递</h2><button id="btnMirrorRefresh">刷新</button></div>
+        <div class="stats" id="mirrorStats" style="margin-top:12px"></div>
+        <p class="muted small" style="margin-top:10px">本地资金操作同事务写 mirror_outbox，单线程顺序镜像到 payment-pro；本地账本权威不变，pp 宕机恢复后自动追平。DEAD 需人工重放或线下销账关闭。</p>
+      </div>
+      <div class="card">
+        <h2><span class="dot"></span>镜像 DEAD 事件</h2>
+        <div class="table-scroll"><table class="table">
+          <thead><tr><th>类型</th><th>业务号</th><th>用户</th><th>订单</th><th>重试</th><th>最后错误</th><th>操作</th></tr></thead>
+          <tbody id="mirrorDeadBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- 用户与司机 -->
+    <div class="tabpane" id="pane-users">
+      <div class="grid cols-2">
+        <div class="card"><h2><span class="dot"></span>乘客</h2>
+          <div class="table-scroll"><table class="table"><thead><tr><th>ID</th><th>姓名</th><th>手机</th><th>免密</th><th>注册</th><th>操作</th></tr></thead><tbody id="passengersBody"></tbody></table></div>
+        </div>
+        <div class="card"><h2><span class="dot"></span>司机</h2>
+          <div class="table-scroll"><table class="table"><thead><tr><th>ID</th><th>姓名</th><th>车牌</th><th>状态</th><th>服务分</th><th>操作</th></tr></thead><tbody id="driversBody"></tbody></table></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="spread"><h2 style="margin:0"><span class="dot"></span>司机证件准入审核</h2><button id="btnDocsRefresh">刷新</button></div>
+        <div class="table-scroll" style="margin-top:12px"><table class="table">
+          <thead><tr><th>司机</th><th>类型</th><th>证号</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="docsBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- 配置中心 -->
+    <div class="tabpane" id="pane-config">
+      <div class="card">
+        <div class="spread"><h2 style="margin:0"><span class="dot"></span>配置中心（派单/取消/计价/安全/客服）</h2><button id="btnCfgRefresh">刷新</button></div>
+        <div class="table-scroll" style="margin-top:12px"><table class="table">
+          <thead><tr><th>键</th><th>值</th><th>操作</th></tr></thead>
+          <tbody id="configBody"></tbody>
+        </table></div>
+        <p class="muted small">取消费/派单参数为运营配置展示与留痕；cs open key 脱敏显示。修改写入操作审计。</p>
+      </div>
+    </div>
+
+    <!-- 优惠券 -->
+    <div class="tabpane" id="pane-coupons">
+      <div class="grid cols-2">
+        <div class="card">
+          <h2><span class="dot"></span>券模板</h2>
+          <div class="table-scroll"><table class="table"><thead><tr><th>名称</th><th>类型</th><th>优惠</th><th>门槛</th><th>已发/总量</th><th>状态</th></tr></thead><tbody id="tplBody"></tbody></table></div>
+          <label>新建模板</label>
+          <input id="tplName" placeholder="名称，如 新人立减5元">
+          <div class="row" style="margin-top:8px">
+            <div><select id="tplType"><option value="FULL_REDUCE">满减</option><option value="DISCOUNT">折扣</option></select></div>
+            <div><input id="tplBenefit" type="number" placeholder="减额分/折扣%" value="500"></div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <div><input id="tplMin" type="number" placeholder="门槛分" value="1000"></div>
+            <div><input id="tplDays" type="number" placeholder="有效天" value="7"></div>
+            <div><input id="tplTotal" type="number" placeholder="总量" value="100"></div>
+          </div>
+          <div class="btns"><button id="btnTplCreate">创建模板</button></div>
+        </div>
+        <div class="card"><h2><span class="dot"></span>已发券</h2>
+          <div class="table-scroll"><table class="table"><thead><tr><th>券</th><th>用户</th><th>名称</th><th>状态</th><th>订单</th></tr></thead><tbody id="cpBody"></tbody></table></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2><span class="dot"></span>活动配置（乘客端 banner）</h2>
+        <div class="row"><div><input id="campText" placeholder="活动文案，如 新人首单立减5元"></div><div style="flex:0 0 auto;display:flex;align-items:center;gap:6px"><label style="margin:0">启用</label><input type="checkbox" id="campOn" style="width:auto" checked></div><div style="flex:0 0 auto"><button id="campSave">保存</button></div></div>
+      </div>
+    </div>
+
+    <!-- 风控安全 -->
+    <div class="tabpane" id="pane-risk">
+      <div class="card" style="margin-bottom:16px">
+        <div class="spread"><h2 style="margin:0"><span class="dot"></span>告警总览</h2><button id="btnRiskRefresh">刷新</button></div>
+        <div class="stats" id="riskStats" style="margin-top:12px"></div>
+      </div>
+      <div class="card">
+        <h2><span class="dot"></span>安全事件（SOS/偏航/录音/疲劳/分享）</h2>
+        <div class="table-scroll"><table class="table">
+          <thead><tr><th>时间</th><th>用户</th><th>订单</th><th>类型</th><th>详情</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="safetyBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- 客服工单 -->
+    <div class="tabpane" id="pane-tickets">
+      <div class="card">
+        <div class="spread"><h2 style="margin:0"><span class="dot"></span>客服工单（ride → cs-pro）</h2>
+          <div class="btns" style="margin:0"><a href="http://127.0.0.1:8096/admin.html" target="_blank"><button class="ghost">打开 cs-pro 工单台</button></a><button id="btnTkRefresh">刷新</button></div>
+        </div>
+        <div class="table-scroll" style="margin-top:12px"><table class="table">
+          <thead><tr><th>本地ID</th><th>订单</th><th>用户</th><th>类别</th><th>cs工单</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="ticketBody"></tbody>
+        </table></div>
+        <p class="muted small">乘客投诉经签名 open 通道转 cs-pro；此处为本地 linkage 与状态同步，详细处置在 cs-pro 工单台。</p>
+      </div>
+    </div>
+
+    <!-- 权限审计 -->
+    <div class="tabpane" id="pane-rbac">
+      <div class="grid cols-2">
+        <div class="card">
+          <h2><span class="dot"></span>角色登录 / 管理员</h2>
+          <div class="row"><div><input id="rbUser" placeholder="用户名 admin"></div><div><input id="rbPass" type="password" placeholder="口令"></div><div style="flex:0 0 auto"><button id="btnRbLogin">登录</button></div></div>
+          <p class="muted small" style="margin-top:8px">当前角色：<span id="rbRole" class="badge info">未登录（默认 admin）</span></p>
+          <div class="table-scroll" style="margin-top:10px"><table class="table"><thead><tr><th>用户名</th><th>角色</th><th>状态</th></tr></thead><tbody id="adminsBody"></tbody></table></div>
+          <label>新增管理员</label>
+          <div class="row"><div><input id="rbNewUser" placeholder="用户名"></div><div><select id="rbNewRole"><option>OPS</option><option>FINANCE</option><option>SUPPORT</option><option>ADMIN</option></select></div><div><input id="rbNewPass" type="password" placeholder="初始口令"></div></div>
+          <div class="btns"><button id="btnAdminCreate">创建</button></div>
+        </div>
+        <div class="card"><h2><span class="dot"></span>操作审计</h2>
+          <div class="table-scroll" style="max-height:480px;overflow-y:auto"><table class="table"><thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>对象</th><th>详情</th></tr></thead><tbody id="auditBody2"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 报表趋势 -->
+    <div class="tabpane" id="pane-reports">
+      <div class="card">
+        <div class="spread"><h2 style="margin:0"><span class="dot"></span>运营趋势（近 7 日）</h2>
+          <div class="btns" style="margin:0"><button class="ghost" id="btnRepCsv">导出订单 CSV</button><button id="btnRepRefresh">刷新</button></div>
+        </div>
+        <canvas id="repChart" style="width:100%;height:160px;margin-top:12px;background:#0b1220;border-radius:10px"></canvas>
+        <div class="table-scroll" style="margin-top:12px"><table class="table"><thead><tr><th>日期</th><th>订单数</th><th>已支付</th><th>GMV</th></tr></thead><tbody id="repBody"></tbody></table></div>
+        <h2 style="margin-top:16px"><span class="dot"></span>账面核对（对账报表）</h2>
+        <div class="table-scroll"><table class="table"><thead><tr><th>用户</th><th>钱包余额</th><th>流水求和</th><th>差额</th><th>笔数</th><th>结果</th></tr></thead><tbody id="reconBody"></tbody></table></div>
+      </div>
+    </div>
   </div>
 
   <script src="common.js"></script>
@@ -184,11 +344,12 @@
     const $ = id => document.getElementById(id);
     const LOG_NAMES = ['gateway', 'order', 'payment', 'dispatch', 'push', 'driver', 'passenger', 'location', 'pricing', 'registry'];
     let token = localStorage.getItem('ride.adminToken') || '';
+    let adminUser = localStorage.getItem('ride.adminUser') || '';
     let ledgerPage = 1, ordersPage = 1, logTimer = null;
 
     async function aapi(method, path, body) {
       try {
-        return await api(method, path, body, { 'X-Admin-Token': token });
+        return await api(method, path, body, { 'X-Admin-Token': token, 'X-Admin-User': adminUser || 'admin' });
       } catch (e) {
         if (e.status === 401) { tokenGate(); throw new Error('管理端令牌无效，请重新输入'); }
         throw e;
@@ -229,6 +390,14 @@
       if (name === 'orders') loadOrders(1);
       if (name === 'wallets') loadWallets();
       if (name === 'consistency') loadConsistency();
+      if (name === 'mirror') loadMirror();
+      if (name === 'users') loadUsers();
+      if (name === 'config') loadConfig();
+      if (name === 'coupons') loadCoupons();
+      if (name === 'risk') loadRisk();
+      if (name === 'tickets') loadTickets();
+      if (name === 'rbac') loadRbac();
+      if (name === 'reports') loadReports();
     }
     document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 
@@ -268,6 +437,22 @@
           `<tr><td>ride-registry (ZK)</td><td>2182/8093</td><td>${h.registry.ok ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>` +
           h.services.map(s => `<tr><td>${s.service}</td><td>${s.port}</td><td>${s.ok ? '<span class="badge ok">正常</span>' : '<span class="badge err">离线</span>'}</td></tr>`).join('');
       } catch { $('healthBody').innerHTML = '<tr><td colspan="3" class="muted">网关不可达</td></tr>'; }
+      loadLive();
+    }
+    let liveMap = null;
+    async function loadLive() {
+      try {
+        const ds = await api('GET', '/api/drivers');
+        const online = ds.filter(d => d.status === 'ONLINE' || d.status === 'BUSY');
+        $('liveCount').textContent = `在线 ${online.length}`;
+        const markers = [];
+        for (const d of online) {
+          let loc = null; try { loc = await api('GET', '/api/locations/' + d.id); } catch { }
+          if (loc && loc.lat != null) markers.push({ lat: loc.lat, lng: loc.lng, color: d.status === 'BUSY' ? '#fbbf24' : '#60a5fa', label: d.name });
+        }
+        if (!liveMap) liveMap = new MapView($('liveMap'));
+        liveMap.setMarkers(markers);
+      } catch { }
     }
     $('btnDashRefresh').onclick = loadDash;
     $('btnSeed').onclick = async () => {
@@ -400,17 +585,50 @@
         const res = await aapi('GET', '/api/orders/query?' + q);
         $('ordersBody').innerHTML = res.items.map(o => `
           <tr class="clickable" data-oid="${o.id}">
+            <td><input type="checkbox" class="oSel" data-oid="${o.id}" data-status="${o.status}" style="width:auto"></td>
             <td>${o.id}</td><td>${escapeHtml(o.passengerName || o.passengerId)}</td>
             <td>${o.driverName ? escapeHtml(o.driverName) : '--'}</td>
             <td>${escapeHtml(o.originName || '--')} → ${escapeHtml(o.destName || '--')}</td>
             <td>${statusBadge(o.status)}</td>
             <td>${yuan(o.estimateFee)} / ${yuan(o.actualFee)}</td><td>${fmtTime(o.createdAt)}</td>
-          </tr>`).join('') || '<tr><td colspan="7" class="muted">暂无订单</td></tr>';
-        $('ordersBody').querySelectorAll('tr.clickable').forEach(tr => tr.onclick = () => adminOrderDetail(tr.dataset.oid));
+          </tr>`).join('') || '<tr><td colspan="8" class="muted">暂无订单</td></tr>';
+        $('ordersBody').querySelectorAll('tr.clickable').forEach(tr => tr.onclick = e => { if (e.target.classList.contains('oSel')) return; adminOrderDetail(tr.dataset.oid); });
+        const syncBatch = () => {
+          const sel = [...$('ordersBody').querySelectorAll('.oSel:checked')];
+          $('oBatch').style.display = sel.length ? 'flex' : 'none';
+          $('oBatchCount').textContent = `已选 ${sel.length} 单`;
+        };
+        $('ordersBody').querySelectorAll('.oSel').forEach(c => c.onchange = syncBatch);
+        $('oAll').onchange = e => { $('ordersBody').querySelectorAll('.oSel').forEach(c => c.checked = e.target.checked); syncBatch(); };
+        $('oBatchForce').onclick = async () => {
+          const sel = [...$('ordersBody').querySelectorAll('.oSel:checked')].filter(c => ACTIVE_STATUSES.includes(c.dataset.status));
+          if (!sel.length) return toast('选中项无进行中订单', 'warn');
+          const ok = await confirmDialog(`批量强制取消 <b>${sel.length}</b> 单？`, '批量取消'); if (!ok) return;
+          for (const c of sel) { try { await aapi('POST', `/api/admin/orders/${c.dataset.oid}/force-cancel?reason=` + encodeURIComponent('管理端批量强制取消')); } catch (e) { toast(c.dataset.oid + ': ' + e.message, 'err'); } }
+          toast('批量强制取消完成', 'ok'); loadOrders(ordersPage);
+        };
+        $('oBatchRefund').onclick = async () => {
+          const sel = [...$('ordersBody').querySelectorAll('.oSel:checked')].filter(c => c.dataset.status === 'PAID');
+          if (!sel.length) return toast('选中项无已支付订单', 'warn');
+          const ok = await confirmDialog(`批量全额退款 <b>${sel.length}</b> 单？司机/平台按比例扣回。`, '批量退款'); if (!ok) return;
+          for (const c of sel) { try { await aapi('POST', `/api/admin/orders/${c.dataset.oid}/refund?reason=` + encodeURIComponent('管理端批量退款')); } catch (e) { toast(c.dataset.oid + ': ' + e.message, 'err'); } }
+          toast('批量退款完成', 'ok'); loadOrders(ordersPage);
+        };
         renderPager($('ordersPager'), res.page, res.size, res.total, loadOrders);
+        loadRr();
       } catch (e) { toast(e.message, 'err'); }
     }
     $('oSearch').onclick = () => loadOrders(1);
+    async function loadRr() {
+      try {
+        const rr = await aapi('GET', '/api/admin/support/refund-requests');
+        $('rrBody').innerHTML = rr.map(r => `<tr><td>${r.id}</td><td>${r.orderId}</td><td>${yuan(r.amount)}</td><td class="small">${escapeHtml(r.reason || '')}</td><td>${escapeHtml(r.requestedBy || '')}</td><td><span class="badge ${r.status === 'PENDING' ? 'warn' : r.status === 'EXECUTED' ? 'ok' : 'err'}">${r.status}</span></td>
+          <td>${r.status === 'PENDING' ? `<button class="green" data-ok="${r.id}">批准执行</button> <button class="red" data-no="${r.id}">驳回</button>` : escapeHtml(r.approvedBy || '')}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">暂无退款申请</td></tr>';
+        $('rrBody').querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => { const ok = await confirmDialog('批准并执行该退款？', '批准'); if (!ok) return; try { await aapi('POST', `/api/admin/support/refund-requests/${b.dataset.ok}/review?approve=true`); toast('已批准并执行', 'ok'); loadRr(); } catch (e) { toast(e.message, 'err'); } });
+        $('rrBody').querySelectorAll('[data-no]').forEach(b => b.onclick = async () => { try { await aapi('POST', `/api/admin/support/refund-requests/${b.dataset.no}/review?approve=false`); toast('已驳回', 'warn'); loadRr(); } catch (e) { toast(e.message, 'err'); } });
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnRrRefresh').onclick = loadRr;
 
     function adminOrderDetail(oid) {
       openOrderDetail(oid, {
@@ -418,12 +636,19 @@
           <div class="btns">
             <button class="red" id="aForce">强制取消</button>
             <button class="amber" id="aRefund">退款</button>
+            <button class="ghost" id="aRefundReq">走审批退款</button>
           </div>
           <p class="muted small">强制取消适用于行程中异常单；退款仅已支付订单，支持部分退款（司机/平台按比例扣回，乘客到账）。</p>`,
         onReady: (body, o) => {
           const force = body.querySelector('#aForce'), refund = body.querySelector('#aRefund');
           force.disabled = !ACTIVE_STATUSES.includes(o.status);
           refund.disabled = o.status !== 'PAID';
+          const reqBtn = body.querySelector('#aRefundReq');
+          reqBtn.disabled = o.status !== 'PAID';
+          reqBtn.onclick = async () => {
+            const remaining = (o.actualFee || 0) - (o.refundedAmount || 0);
+            try { await aapi('POST', '/api/admin/support/refund-requests', { orderId: o.id, amount: remaining, reason: '管理端审批退款' }); toast('已提交退款审批', 'ok'); closeDrawer(); loadRr(); } catch (e) { toast(e.message, 'err'); }
+          };
           force.onclick = async () => {
             const ok = await confirmDialog(`确认强制取消订单 <b>${o.id}</b>？行程中订单将立即关闭并释放司机。`, '强制取消');
             if (!ok) return;
@@ -560,6 +785,195 @@
     }
     $('btnConsRefresh').onclick = loadConsistency;
 
+    // ---- 双账本镜像 ----
+    async function loadMirror() {
+      try {
+        const [ms, dead] = await Promise.all([aapi('GET', '/api/admin/mirror'), aapi('GET', '/api/admin/mirror/dead')]);
+        const backlog = ms.pendingCount > 0 && ms.oldestPendingAgeMs > 10000;
+        $('mirrorStats').innerHTML = `
+          <div class="stat"><div class="n ${backlog ? 'red' : ms.pendingCount > 0 ? 'amber' : 'green'}">${ms.pendingCount}</div><div class="l">待镜像</div></div>
+          <div class="stat"><div class="n green">${ms.sentCount}</div><div class="l">已镜像</div></div>
+          <div class="stat"><div class="n ${(ms.deadCount || 0) > 0 ? 'red' : 'green'}">${ms.deadCount || 0}</div><div class="l">DEAD</div></div>
+          <div class="stat"><div class="n amber">${ms.maxRetries}</div><div class="l">最大重试</div></div>
+          <div class="stat"><div class="n ${ms.oldestPendingAgeMs > 10000 ? 'red' : ''}">${(ms.oldestPendingAgeMs / 1000).toFixed(0)}s</div><div class="l">最老积压</div></div>`;
+        $('mirrorDeadBody').innerHTML = dead.map(e => `
+          <tr><td>${e.bizType}</td><td class="small">${escapeHtml(e.bizNo)}</td><td>${escapeHtml(e.userId || '--')}</td><td>${e.orderId || '--'}</td><td>${e.retries}</td>
+          <td class="small muted">${escapeHtml(e.lastError || '--')}</td>
+          <td><button class="ghost" data-replay="${escapeHtml(e.bizNo)}">重放</button> <button class="ghost" data-close="${escapeHtml(e.bizNo)}">关闭</button></td></tr>`).join('')
+          || '<tr><td colspan="7" class="muted">无镜像 DEAD ✔</td></tr>';
+        $('mirrorDeadBody').querySelectorAll('[data-replay]').forEach(b => b.onclick = async () => {
+          const ok = await confirmDialog(`重放镜像 <b>${escapeHtml(b.dataset.replay)}</b>？幂等不会重复动账。`, '重放'); if (!ok) return;
+          try { const n = await aapi('POST', '/api/admin/mirror/replay?key=' + encodeURIComponent(b.dataset.replay)); toast(n > 0 ? `已重放 ${n} 条` : '未找到', n > 0 ? 'ok' : 'warn'); loadMirror(); } catch (e) { toast(e.message, 'err'); }
+        });
+        $('mirrorDeadBody').querySelectorAll('[data-close]').forEach(b => b.onclick = async () => {
+          const reason = prompt('线下处理完毕，填写销账原因：'); if (!reason) return;
+          try { await aapi('POST', `/api/admin/mirror/close?key=${encodeURIComponent(b.dataset.close)}&reason=${encodeURIComponent(reason)}`); toast('已关闭销账', 'ok'); loadMirror(); } catch (e) { toast(e.message, 'err'); }
+        });
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnMirrorRefresh').onclick = loadMirror;
+
+    // ---- 用户与司机 / 证件审核 ----
+    const DOC_LABEL = { DRIVER_LICENSE: '驾驶员证', TRANSPORT_LICENSE: '运输证', VEHICLE_LICENSE: '行驶证', INSURANCE: '保险' };
+    async function loadUsers() {
+      try {
+        const [ps, ds, docs] = await Promise.all([api('GET', '/api/passengers'), api('GET', '/api/drivers'), aapi('GET', '/api/admin/support/docs/pending')]);
+        $('passengersBody').innerHTML = ps.map(p => `<tr><td>${p.id}</td><td>${escapeHtml(p.name)}${p.blocked ? ' <span class="badge err">封禁</span>' : ''}</td><td class="small">${escapeHtml(p.phone || '--')}</td><td>${p.autoPay ? '<span class="badge ok">开</span>' : '<span class="badge">关</span>'}</td><td class="small">${fmtTime(p.createdAt)}</td><td><button class="${p.blocked ? 'green' : 'red'}" data-bp="${p.id}" data-blocked="${!p.blocked}">${p.blocked ? '解封' : '封禁'}</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">暂无</td></tr>';
+        $('driversBody').innerHTML = ds.map(d => `<tr><td>${d.id}</td><td>${escapeHtml(d.name)}${d.blocked ? ' <span class="badge err">封禁</span>' : ''}</td><td>${escapeHtml(d.carNo)}</td><td>${d.status === 'ONLINE' ? '<span class="badge ok">听单</span>' : d.status === 'BUSY' ? '<span class="badge warn">服务</span>' : '<span class="badge">下线</span>'}</td><td>${(d.serviceScore ?? 5).toFixed(2)}</td><td><button class="${d.blocked ? 'green' : 'red'}" data-bd="${d.id}" data-blocked="${!d.blocked}">${d.blocked ? '解封' : '封禁'}</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">暂无</td></tr>';
+        $('passengersBody').querySelectorAll('[data-bp]').forEach(b => b.onclick = async () => {
+          const block = b.dataset.blocked === 'true';
+          const ok = await confirmDialog(`确认${block ? '封禁' : '解封'}乘客 <b>${b.dataset.bp}</b>？${block ? '封禁后禁止叫车。' : ''}`, '确认');
+          if (!ok) return;
+          try { await aapi('POST', `/api/admin/support/passengers/${b.dataset.bp}/block?blocked=${block}`); toast(block ? '已封禁' : '已解封', 'ok'); loadUsers(); } catch (e) { toast(e.message, 'err'); }
+        });
+        $('driversBody').querySelectorAll('[data-bd]').forEach(b => b.onclick = async () => {
+          const block = b.dataset.blocked === 'true';
+          const ok = await confirmDialog(`确认${block ? '封禁' : '解封'}司机 <b>${b.dataset.bd}</b>？${block ? '封禁后强制下线并禁止出车/接单。' : ''}`, '确认');
+          if (!ok) return;
+          try { await aapi('POST', `/api/admin/support/drivers/${b.dataset.bd}/block?blocked=${block}`); toast(block ? '已封禁' : '已解封', 'ok'); loadUsers(); } catch (e) { toast(e.message, 'err'); }
+        });
+        $('docsBody').innerHTML = docs.map(d => `<tr><td>${d.driverId}</td><td>${DOC_LABEL[d.type] || d.type}</td><td class="small">${escapeHtml(d.docNo || '')}</td><td><span class="badge warn">${d.status}</span></td>
+          <td><button class="green" data-ok="${d.id}">通过</button> <button class="red" data-no="${d.id}">驳回</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">无待审核证件 ✔</td></tr>';
+        $('docsBody').querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => { await aapi('POST', `/api/admin/support/docs/${b.dataset.ok}/review?approve=true`); toast('已通过', 'ok'); loadUsers(); });
+        $('docsBody').querySelectorAll('[data-no]').forEach(b => b.onclick = async () => { const r = prompt('驳回原因：'); if (!r) return; await aapi('POST', `/api/admin/support/docs/${b.dataset.no}/review?approve=false&reason=${encodeURIComponent(r)}`); toast('已驳回', 'warn'); loadUsers(); });
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnDocsRefresh').onclick = loadUsers;
+
+    // ---- 配置中心 ----
+    async function loadConfig() {
+      try {
+        const cfg = await aapi('GET', '/api/admin/support/config');
+        $('configBody').innerHTML = Object.entries(cfg).map(([k, v]) => `
+          <tr><td class="small">${escapeHtml(k)}</td><td><input data-cfg="${escapeHtml(k)}" value="${escapeHtml(v)}" style="min-width:160px"></td>
+          <td><button class="ghost" data-save="${escapeHtml(k)}">保存</button></td></tr>`).join('');
+        $('configBody').querySelectorAll('[data-save]').forEach(b => b.onclick = async () => {
+          const k = b.dataset.save; const v = $('configBody').querySelector(`[data-cfg="${k}"]`).value;
+          try { await aapi('POST', `/api/admin/support/config?key=${encodeURIComponent(k)}&value=${encodeURIComponent(v)}`); toast('已保存 ' + k, 'ok'); } catch (e) { toast(e.message, 'err'); }
+        });
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnCfgRefresh').onclick = loadConfig;
+
+    // ---- 优惠券 ----
+    async function loadCoupons() {
+      try {
+        const [tpl, cp] = await Promise.all([aapi('GET', '/api/admin/support/templates'), aapi('GET', '/api/admin/support/coupons')]);
+        $('tplBody').innerHTML = tpl.map(t => `<tr><td>${escapeHtml(t.name)}</td><td>${t.type === 'DISCOUNT' ? '折扣' : '满减'}</td><td>${t.type === 'DISCOUNT' ? t.benefit + '%' : yuan(t.benefit)}</td><td>${yuan(t.minAmount)}</td><td>${t.issued}/${t.total || '∞'}</td><td><span class="badge ${t.status === 'ACTIVE' ? 'ok' : ''}">${t.status}</span></td></tr>`).join('') || '<tr><td colspan="6" class="muted">暂无模板</td></tr>';
+        $('cpBody').innerHTML = cp.slice(0, 50).map(c => `<tr><td class="small">${c.id}</td><td>${escapeHtml(c.userId)}</td><td>${escapeHtml(c.name || '')}</td><td><span class="badge ${c.status === 'UNUSED' ? 'ok' : c.status === 'USED' ? 'info' : 'err'}">${c.status}</span></td><td>${c.orderId || '--'}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">暂无</td></tr>';
+        const cfg = await aapi('GET', '/api/admin/support/config');
+        $('campText').value = cfg['support.campaign.text'] || '';
+        $('campOn').checked = cfg['support.campaign.enabled'] !== 'false';
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('campSave').onclick = async () => {
+      try {
+        await aapi('POST', `/api/admin/support/config?key=support.campaign.text&value=${encodeURIComponent($('campText').value)}`);
+        await aapi('POST', `/api/admin/support/config?key=support.campaign.enabled&value=${$('campOn').checked ? 'true' : 'false'}`);
+        toast('活动配置已保存', 'ok');
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    $('btnTplCreate').onclick = async () => {
+      const name = $('tplName').value.trim(); if (!name) return toast('填名称', 'warn');
+      try {
+        await aapi('POST', '/api/admin/support/templates', { name, type: $('tplType').value, benefit: +$('tplBenefit').value || 0, minAmount: +$('tplMin').value || 0, validDays: +$('tplDays').value || 7, total: +$('tplTotal').value || 0 });
+        toast('模板已创建', 'ok'); loadCoupons();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+
+    // ---- 风控安全 ----
+    async function loadRisk() {
+      try {
+        const [ev, ob, mir, audit] = await Promise.all([aapi('GET', '/api/admin/support/safety/events'), aapi('GET', '/api/admin/outbox'), aapi('GET', '/api/admin/mirror'), aapi('GET', '/api/admin/audit')]);
+        const sos = ev.filter(e => e.type === 'SOS' && e.status === 'OPEN').length;
+        const badAudit = audit.filter(a => !a.ok).length;
+        $('riskStats').innerHTML = `
+          <div class="stat"><div class="n ${sos ? 'red' : 'green'}">${sos}</div><div class="l">未处置 SOS</div></div>
+          <div class="stat"><div class="n ${ev.filter(e => e.status === 'OPEN').length ? 'amber' : 'green'}">${ev.filter(e => e.status === 'OPEN').length}</div><div class="l">开放安全事件</div></div>
+          <div class="stat"><div class="n ${(ob.deadCount || 0) ? 'red' : 'green'}">${ob.deadCount || 0}</div><div class="l">outbox DEAD</div></div>
+          <div class="stat"><div class="n ${(mir.deadCount || 0) ? 'red' : 'green'}">${mir.deadCount || 0}</div><div class="l">镜像 DEAD</div></div>
+          <div class="stat"><div class="n ${badAudit ? 'red' : 'green'}">${badAudit}</div><div class="l">账面不平</div></div>`;
+        $('safetyBody').innerHTML = ev.slice(0, 60).map(e => `<tr><td class="small">${fmtTime(e.createdAt)}</td><td>${escapeHtml(e.userId || '--')}</td><td>${e.orderId || '--'}</td><td><span class="badge ${e.type === 'SOS' ? 'err' : 'warn'}">${e.type}</span></td><td class="small muted">${escapeHtml(e.detail || '')}</td><td>${e.status === 'OPEN' ? '<span class="badge warn">开放</span>' : '<span class="badge ok">已处置</span>'}</td><td>${e.status === 'OPEN' ? `<button class="ghost" data-handle="${e.id}">处置</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">暂无安全事件</td></tr>';
+        $('safetyBody').querySelectorAll('[data-handle]').forEach(b => b.onclick = async () => { await aapi('POST', `/api/admin/support/safety/events/${b.dataset.handle}/handle`); toast('已处置', 'ok'); loadRisk(); });
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnRiskRefresh').onclick = loadRisk;
+
+    // ---- 客服工单 ----
+    async function loadTickets() {
+      try {
+        const tk = await aapi('GET', '/api/admin/support/tickets');
+        $('ticketBody').innerHTML = tk.map(t => `<tr><td>${t.id}</td><td>${t.orderId || '--'}</td><td>${escapeHtml(t.userId || '')}</td><td>${escapeHtml(t.category || '')}</td><td>${t.csTicketId ? `<a href="http://127.0.0.1:8096/admin.html" target="_blank" style="color:var(--brand)">${t.csTicketId}</a>` : '<span class="badge warn">离线待同步</span>'}</td><td><span class="badge ${t.status === 'OPEN' ? 'warn' : 'ok'}">${t.status}</span></td>
+          <td><select data-st="${t.id}"><option>OPEN</option><option>PROCESSING</option><option>RESOLVED</option><option>CLOSED</option></select> <button class="ghost" data-up="${t.id}">更新</button></td></tr>`).join('') || '<tr><td colspan="7" class="muted">暂无工单</td></tr>';
+        $('ticketBody').querySelectorAll('[data-up]').forEach(b => b.onclick = async () => {
+          const st = $('ticketBody').querySelector(`[data-st="${b.dataset.up}"]`).value;
+          await aapi('POST', `/api/admin/support/tickets/${b.dataset.up}/status?status=${st}`); toast('已更新', 'ok'); loadTickets();
+        });
+        $('ticketBody').querySelectorAll('select[data-st]').forEach(s => { const t = tk.find(x => x.id === s.dataset.st); if (t) s.value = t.status; });
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnTkRefresh').onclick = loadTickets;
+
+    // ---- 权限审计 ----
+    async function loadRbac() {
+      try {
+        const [admins, audit] = await Promise.all([aapi('GET', '/api/admin/support/admins'), aapi('GET', '/api/admin/support/audit?limit=100')]);
+        $('adminsBody').innerHTML = admins.map(a => `<tr><td>${escapeHtml(a.username)}</td><td><span class="badge info">${a.role}</span></td><td>${a.status === 'ACTIVE' ? '<span class="badge ok">启用</span>' : '<span class="badge err">停用</span>'}</td></tr>`).join('');
+        $('auditBody2').innerHTML = audit.map(a => `<tr><td class="small">${fmtTime(a.createdAt)}</td><td>${escapeHtml(a.admin || '')}</td><td>${escapeHtml(a.action || '')}</td><td class="small">${escapeHtml(a.target || '')}</td><td class="small muted">${escapeHtml(a.detail || '')}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">暂无审计</td></tr>';
+        if (adminUser) $('rbRole').textContent = adminUser;
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnRbLogin').onclick = async () => {
+      try {
+        const u = await aapi('POST', `/api/admin/support/login?username=${encodeURIComponent($('rbUser').value.trim())}&password=${encodeURIComponent($('rbPass').value)}`);
+        adminUser = u.username; localStorage.setItem('ride.adminUser', adminUser);
+        $('rbRole').textContent = `${u.username} · ${u.role}`; toast('登录成功 ' + u.role, 'ok'); loadRbac();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    $('btnAdminCreate').onclick = async () => {
+      const username = $('rbNewUser').value.trim(); if (!username) return toast('填用户名', 'warn');
+      try { await aapi('POST', '/api/admin/support/admins', { username, role: $('rbNewRole').value, passwordHash: $('rbNewPass').value || 'admin123' }); toast('已创建', 'ok'); loadRbac(); } catch (e) { toast(e.message, 'err'); }
+    };
+
+    // ---- 报表趋势 ----
+    async function loadReports() {
+      try {
+        const res = await aapi('GET', '/api/orders/query?page=1&size=200');
+        const days = [...Array(7)].map((_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); d.setHours(0, 0, 0, 0); return d; });
+        const rows = days.map(d => {
+          const e = new Date(d); e.setHours(23, 59, 59, 999);
+          const items = res.items.filter(o => o.createdAt >= d.getTime() && o.createdAt <= e.getTime());
+          const paid = items.filter(o => o.status === 'PAID');
+          return { d, n: items.length, p: paid.length, gmv: paid.reduce((s, o) => s + (o.actualFee || 0), 0) };
+        });
+        $('repBody').innerHTML = rows.map(r => `<tr><td>${r.d.getMonth() + 1}/${r.d.getDate()}</td><td>${r.n}</td><td>${r.p}</td><td style="color:var(--green)">${yuan(r.gmv)}</td></tr>`).join('');
+        const audit = await aapi('GET', '/api/admin/audit');
+        $('reconBody').innerHTML = audit.map(a => `<tr><td>${escapeHtml(a.userId)}</td><td>${yuan(a.walletBalance)}</td><td>${yuan(a.ledgerSum)}</td><td style="color:${a.diff ? 'var(--red)' : 'var(--muted)'}">${yuan(a.diff)}</td><td>${a.entryCount}</td><td>${a.ok ? '<span class="badge ok">守恒</span>' : '<span class="badge err">不平</span>'}</td></tr>`).join('');
+        const cv = $('repChart'); const ctx = cv.getContext('2d');
+        cv.width = cv.clientWidth * devicePixelRatio; cv.height = 160 * devicePixelRatio; ctx.scale(devicePixelRatio, devicePixelRatio);
+        const w = cv.clientWidth, h = 160, bw = w / 7, max = Math.max(1, ...rows.map(r => r.n));
+        ctx.clearRect(0, 0, w, h);
+        rows.forEach((r, i) => {
+          const bh = r.n / max * (h - 40);
+          ctx.fillStyle = '#60a5fa'; ctx.fillRect(i * bw + bw * 0.2, h - 24 - bh, bw * 0.35, bh);
+          const gh = r.gmv / Math.max(1, ...rows.map(x => x.gmv)) * (h - 40);
+          ctx.fillStyle = '#34d399'; ctx.fillRect(i * bw + bw * 0.55, h - 24 - gh, bw * 0.35, gh);
+          ctx.fillStyle = '#8a94a6'; ctx.font = '10px sans-serif'; ctx.fillText((r.d.getMonth() + 1) + '/' + r.d.getDate(), i * bw + bw * 0.2, h - 8);
+        });
+      } catch (e) { toast(e.message, 'err'); }
+    }
+    $('btnRepRefresh').onclick = loadReports;
+    $('btnRepCsv').onclick = async () => {
+      try {
+        const res = await aapi('GET', '/api/orders/query?page=1&size=200');
+        const head = '订单,乘客,司机,行程,状态,预估分,实际分,叫车时间';
+        const lines = res.items.map(o => [o.id, o.passengerId, o.driverId || '', `${o.originName}->${o.destName}`, o.status, o.estimateFee, o.actualFee ?? '', fmtTime(o.createdAt)].join(','));
+        const blob = new Blob(['﻿' + head + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `orders-${fmtDateInput()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+        toast(`已导出 ${res.items.length} 条订单`, 'ok');
+      } catch (e) { toast(e.message, 'err'); }
+    };
+
     // ---- 初始化 ----
     if (token) {
       api('GET', '/api/admin/overview', undefined, { 'X-Admin-Token': token })
@@ -569,6 +983,7 @@
     setInterval(() => {
       const active = document.querySelector('.tabpane.active');
       if (active && active.id === 'pane-consistency') loadConsistency();
+      if (active && active.id === 'pane-dash') loadLive();
     }, 5000);
   </script>
 </body>

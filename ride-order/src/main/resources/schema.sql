@@ -64,6 +64,15 @@ CREATE TABLE IF NOT EXISTS order_rating (
 );
 -- v1.4.0：部分退款累计/笔数、催付标记、完单实际计价明细（幂等迁移，保数据）。
 ALTER TABLE ride_order ADD COLUMN IF NOT EXISTS refunded_amount BIGINT NOT NULL DEFAULT 0;
+-- v1.9.0：标签化评价/匿名（幂等迁移，保数据）。
+ALTER TABLE order_rating ADD COLUMN IF NOT EXISTS tags VARCHAR(256);
+ALTER TABLE order_rating ADD COLUMN IF NOT EXISTS anonymous BOOLEAN NOT NULL DEFAULT FALSE;
+-- v1.9.0：多车型接力备选（幂等迁移，保数据）。
+ALTER TABLE ride_order ADD COLUMN IF NOT EXISTS fallback_types VARCHAR(128);
+-- v1.9.0：舒适偏好/加价调度费/支付渠道（幂等迁移，保数据）。
+ALTER TABLE ride_order ADD COLUMN IF NOT EXISTS comfort VARCHAR(64);
+ALTER TABLE ride_order ADD COLUMN IF NOT EXISTS tip_fee BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE ride_order ADD COLUMN IF NOT EXISTS pay_channel VARCHAR(16);
 ALTER TABLE ride_order ADD COLUMN IF NOT EXISTS refund_count INT NOT NULL DEFAULT 0;
 ALTER TABLE ride_order ADD COLUMN IF NOT EXISTS reminded_at BIGINT;
 ALTER TABLE ride_order ADD COLUMN IF NOT EXISTS actual_fare_json CLOB;

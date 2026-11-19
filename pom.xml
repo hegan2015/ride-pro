@@ -30,6 +30,7 @@
         <module>ride-dispatch</module>
         <module>ride-payment</module>
         <module>ride-push</module>
+        <module>ride-support</module>
         <module>ride-gateway</module>
     </modules>
 

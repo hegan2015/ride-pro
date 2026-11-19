@@ -14,5 +14,8 @@ public interface PassengerFacade {
     /** 免密自动扣款授权开关。 */
     Result<PassengerDTO> setAutoPay(String passengerId, boolean enabled);
 
+    /** 管理端封禁/解封。 */
+    Result<PassengerDTO> setBlocked(String passengerId, boolean blocked);
+
     Result<List<PassengerDTO>> list();
 }

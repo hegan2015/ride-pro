@@ -78,7 +78,7 @@ if [ "$DOCKER_MODE" != "1" ]; then
   wait_http "http://127.0.0.1:${ZK_HTTP_PORT:-8093}/health" registry 60
 fi
 
-for svc in passenger driver location pricing order dispatch payment push; do
+for svc in passenger driver location pricing order dispatch payment push support; do
   start "$svc" "ride-$svc"
 done
 

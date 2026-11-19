@@ -36,4 +36,7 @@ public interface DriverMapper {
 
     @Update("UPDATE driver SET decline_count=COALESCE(decline_count,0)+1 WHERE id=#{id}")
     int incrementDecline(String id);
+
+    @Update("UPDATE driver SET blocked=#{blocked} WHERE id=#{id}")
+    int updateBlocked(@Param("id") String id, @Param("blocked") boolean blocked);
 }

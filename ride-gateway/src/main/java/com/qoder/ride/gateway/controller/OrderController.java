@@ -93,8 +93,8 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/pay")
-    public ResponseEntity<Object> pay(@PathVariable String id) {
-        return GatewaySupport.of(orderFacade.pay(id));
+    public ResponseEntity<Object> pay(@PathVariable String id, @RequestParam(required = false) String channel) {
+        return GatewaySupport.of(orderFacade.pay(id, channel));
     }
 
     @PostMapping("/{id}/cancel")
@@ -122,5 +122,16 @@ public class OrderController {
     @GetMapping("/{id}/ratings")
     public ResponseEntity<Object> ratings(@PathVariable String id) {
         return GatewaySupport.of(orderFacade.ratings(id));
+    }
+
+    @GetMapping("/driver-ratings/{driverId}")
+    public ResponseEntity<Object> driverRatings(@PathVariable String driverId) {
+        return GatewaySupport.of(orderFacade.driverRatings(driverId));
+    }
+
+    @PostMapping("/{id}/modify-dest")
+    public ResponseEntity<Object> modifyDest(@PathVariable String id, @RequestParam String destName,
+                                             @RequestParam Double destLat, @RequestParam Double destLng) {
+        return GatewaySupport.of(orderFacade.modifyDest(id, destName, destLat, destLng));
     }
 }

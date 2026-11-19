@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS ride_order (
     paid_at             BIGINT,
     cancelled_at        BIGINT,
     service_type        VARCHAR(16),
+    fallback_types      VARCHAR(128),
+    comfort             VARCHAR(64),
+    tip_fee             BIGINT NOT NULL DEFAULT 0,
+    pay_channel         VARCHAR(16),
     fare_json           TEXT,
     actual_distance_km  DOUBLE,
     actual_duration_min BIGINT,
@@ -65,6 +69,8 @@ CREATE TABLE IF NOT EXISTS order_rating (
     role       VARCHAR(16)  NOT NULL,
     score      INT          NOT NULL,
     comment    VARCHAR(512),
+    tags       VARCHAR(256),
+    anonymous  BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at BIGINT       NOT NULL,
     PRIMARY KEY (order_id, role)
 );

@@ -46,6 +46,34 @@ pricing:
       per-km-fee: 250
       per-min-fee: 60
       min-fare: 1400
+    CARPOOL:
+      label: 拼车
+      base-fee: 800
+      base-km: 3.0
+      per-km-fee: 150
+      per-min-fee: 30
+      min-fare: 800
+    TEHUI:
+      label: 特惠快车
+      base-fee: 1000
+      base-km: 3.0
+      per-km-fee: 180
+      per-min-fee: 40
+      min-fare: 1000
+    YOUXIANG:
+      label: 优享
+      base-fee: 1600
+      base-km: 3.0
+      per-km-fee: 270
+      per-min-fee: 65
+      min-fare: 1600
+    LUXURY:
+      label: 豪华车
+      base-fee: 3500
+      base-km: 3.0
+      per-km-fee: 450
+      per-min-fee: 120
+      min-fare: 3500
   peak-windows:
     - label: 早高峰
       start-hour: 7

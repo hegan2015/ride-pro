@@ -66,12 +66,25 @@ public class DriverService {
 
     public DriverDTO setOnline(String driverId, boolean online) {
         DriverDO driver = require(driverId);
+        if (online && Boolean.TRUE.equals(driver.getBlocked())) {
+            throw new BizException(ResultCode.CONFLICT, "司机已被封禁，禁止出车: " + driverId);
+        }
         if ("BUSY".equals(driver.getStatus())) {
             throw new BizException(ResultCode.CONFLICT, "司机服务中，不可切换上下线: " + driverId);
         }
         String target = online ? "ONLINE" : "OFFLINE";
         driverMapper.updateStatus(driverId, target, System.currentTimeMillis());
         log.info("司机上下线 driverId={} status={}", driverId, target);
+        return toDTO(require(driverId));
+    }
+
+    public DriverDTO setBlocked(String driverId, boolean blocked) {
+        require(driverId);
+        driverMapper.updateBlocked(driverId, blocked);
+        if (blocked) {
+            driverMapper.updateStatus(driverId, "OFFLINE", System.currentTimeMillis());
+        }
+        log.info("司机封禁 driverId={} blocked={}", driverId, blocked);
         return toDTO(require(driverId));
     }
 
@@ -133,6 +146,7 @@ public class DriverService {
         dto.setServiceType(driver.getServiceType() == null ? "EXPRESS" : driver.getServiceType());
         dto.setServiceScore(driver.getServiceScore() == null ? 5.0 : driver.getServiceScore());
         dto.setDeclineCount(driver.getDeclineCount() == null ? 0 : driver.getDeclineCount());
+        dto.setBlocked(Boolean.TRUE.equals(driver.getBlocked()));
         dto.setCreatedAt(driver.getCreatedAt());
         dto.setUpdatedAt(driver.getUpdatedAt());
         return dto;

@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ride-pro · 司乘端体验升级清单（对标滴滴）</title>
+<style>
+:root{
+  --bg:#FBF7F1; --bg2:#F4EEE4; --surface:#FFFFFF; --surface2:#FFFCF8;
+  --ink:#211C15; --ink2:#4A4136; --muted:#8A7E6E; --line:#EADFCF;
+  --orange:#FF6A00; --orange-d:#E85D04; --amber:#FFB020; --amber-soft:#FFF1D6;
+  --teal:#0E9F8A; --teal-soft:#DDF5F0; --indigo:#5A5BD8; --indigo-soft:#E7E7FB;
+  --have:#15A34A; --have-soft:#E4F6EA; --partial:#E8930C; --partial-soft:#FDF0DA;
+  --gap:#E23D3D; --gap-soft:#FBE6E6; --info:#2563EB; --info-soft:#E5EDFD;
+  --p0:#E85D04; --p1:#2563EB; --p2:#8A7E6E;
+  --shadow:0 1px 2px rgba(60,40,10,.05),0 8px 24px rgba(120,80,20,.07);
+  --shadow-lg:0 12px 48px rgba(90,55,10,.16);
+  --r:16px; --r-sm:10px;
+  --accent:var(--orange); --accent-soft:var(--amber-soft);
+  --font:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font); color:var(--ink); background:var(--bg);
+  line-height:1.6; -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+body::before{
+  content:""; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:linear-gradient(var(--orange),var(--orange-d));border-radius:8px;border:2px solid var(--bg2)}
+::-webkit-scrollbar-thumb:hover{background:var(--orange-d)}
+*{scrollbar-color:var(--orange) var(--bg2);scrollbar-width:thin}
+.wrap{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:0 22px}
+
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:60;
+  background:rgba(251,247,241,.86);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+}
+.hbar{display:flex;align-items:center;gap:16px;height:64px}
+.brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:17px;letter-spacing:-.2px;white-space:nowrap}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--orange),var(--amber));display:grid;place-items:center;box-shadow:0 4px 12px rgba(255,106,0,.35);flex:none}
+.logo svg{width:20px;height:20px}
+.brand small{display:block;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.3px}
+.tabs{display:flex;gap:5px;margin-left:auto;background:var(--bg2);padding:4px;border-radius:12px}
+.tab{border:0;background:transparent;font-family:inherit;font-size:13.5px;font-weight:700;color:var(--ink2);padding:7px 15px;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:.18s;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab.on{background:var(--surface);color:var(--accent);box-shadow:var(--shadow)}
+.tab .dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.55}
+.tab.on .dot{opacity:1}
+.search{position:relative;flex:none}
+.search input{font-family:inherit;font-size:13.5px;border:1.5px solid var(--line);background:var(--surface);border-radius:11px;padding:9px 12px 9px 34px;width:210px;color:var(--ink);transition:.18s;outline:none}
+.search input:focus{border-color:var(--accent);width:250px;box-shadow:0 0 0 3px var(--accent-soft)}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--muted)}
+
+/* ---------- hero ---------- */
+.hero{position:relative;padding:46px 0 30px;overflow:hidden}
+.hero-mesh{position:absolute;inset:-40% -10% auto;height:420px;z-index:-1;
+  background:
+   radial-gradient(40% 60% at 18% 30%,rgba(255,106,0,.16),transparent 70%),
+   radial-gradient(40% 60% at 82% 20%,rgba(14,159,138,.14),transparent 70%),
+   radial-gradient(50% 60% at 60% 80%,rgba(255,176,32,.14),transparent 70%);
+  filter:blur(6px)}
+.hero-grid{display:grid;grid-template-columns:1.35fr .9fr;gap:34px;align-items:center}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--orange-d);background:var(--amber-soft);border:1px solid #F6D9A8;padding:5px 12px;border-radius:999px;margin-bottom:16px}
+.eyebrow .pulse{width:7px;height:7px;border-radius:50%;background:var(--orange);animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,106,0,.5)}50%{box-shadow:0 0 0 6px rgba(255,106,0,0)}}
+h1{font-size:clamp(28px,4vw,42px);line-height:1.18;letter-spacing:-1px;font-weight:850;margin-bottom:14px}
+h1 .hl{background:linear-gradient(120deg,var(--orange),var(--amber));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{font-size:15px;color:var(--ink2);max-width:560px;margin-bottom:22px}
+.lede b{color:var(--ink)}
+.hero-stats{display:flex;gap:12px;flex-wrap:wrap}
+.hstat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 18px;box-shadow:var(--shadow);min-width:96px}
+.hstat .num{font-size:26px;font-weight:850;letter-spacing:-.5px;line-height:1.1}
+.hstat .lbl{font-size:11.5px;color:var(--muted);font-weight:600;margin-top:2px}
+.hstat.total .num{color:var(--orange-d)} .hstat.have .num{color:var(--have)}
+.hstat.partial .num{color:var(--partial)} .hstat.gap .num{color:var(--gap)} .hstat.core .num{color:var(--indigo)}
+/* route illustration */
+.route-card{background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow-lg);padding:18px;position:relative}
+.route-card .rc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.rc-chip{font-size:11px;font-weight:700;color:var(--teal);background:var(--teal-soft);padding:4px 10px;border-radius:999px}
+.rc-title{font-size:13px;font-weight:800}
+.route-svg{width:100%;height:auto;display:block;border-radius:14px;background:linear-gradient(160deg,#F3F7F4,#FBF7F1)}
+.rc-legend{display:flex;gap:14px;margin-top:12px;font-size:11.5px;color:var(--muted);font-weight:600;flex-wrap:wrap}
+.rc-legend span{display:flex;align-items:center;gap:5px}
+.rc-legend i{width:9px;height:9px;border-radius:3px;display:inline-block}
+
+/* ---------- control region ---------- */
+.controls{position:sticky;top:64px;z-index:50;background:rgba(251,247,241,.92);backdrop-filter:blur(12px);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:13px 0}
+.ctrl-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ctrl-group{display:flex;align-items:center;gap:7px}
+.ctrl-lbl{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.chip{border:1.5px solid var(--line);background:var(--surface);font-family:inherit;font-size:12.5px;font-weight:700;color:var(--ink2);padding:6px 12px;border-radius:999px;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{border-color:var(--accent);color:var(--ink)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 3px 10px rgba(255,106,0,.25)}
+.chip .sw{width:8px;height:8px;border-radius:50%}
+.chip.on .sw{background:#fff!important}
+.sw-have{background:var(--have)} .sw-partial{background:var(--partial)} .sw-gap{background:var(--gap)}
+.sw-p0{background:var(--p0)} .sw-p1{background:var(--p1)} .sw-p2{background:var(--p2)}
+.toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--ink2);user-select:none}
+.toggle input{display:none}
+.toggle .track{width:38px;height:22px;border-radius:999px;background:var(--line);position:relative;transition:.2s;flex:none}
+.toggle .track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s}
+.toggle input:checked+.track{background:var(--indigo)}
+.toggle input:checked+.track::after{left:19px}
+select.ctrl{font-family:inherit;font-size:12.5px;font-weight:700;color:var(--ink2);border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:7px 10px;cursor:pointer;outline:none}
+select.ctrl:focus{border-color:var(--accent)}
+.btn{font-family:inherit;font-size:12.5px;font-weight:700;border:1.5px solid var(--line);background:var(--surface);color:var(--ink2);padding:7px 13px;border-radius:10px;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.06);color:#fff}
+.ctrl-spacer{flex:1}
+.result-count{font-size:12.5px;font-weight:700;color:var(--muted)}
+.result-count b{color:var(--accent)}
+
+/* ---------- coverage ---------- */
+.coverage{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:26px 0 8px}
+.cov{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;box-shadow:var(--shadow);cursor:pointer;transition:.2s;position:relative;overflow:hidden}
+.cov::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--ca)}
+.cov:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
+.cov.active{border-color:var(--ca);box-shadow:0 0 0 2px var(--ca),var(--shadow)}
+.cov-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.cov-ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:17px;background:var(--casoft);flex:none}
+.cov-name{font-weight:800;font-size:15px}
+.cov-sub{font-size:11.5px;color:var(--muted);font-weight:600}
+.cov-total{margin-left:auto;font-size:22px;font-weight:850;color:var(--ca)}
+.bar{height:11px;border-radius:999px;background:var(--bg2);display:flex;overflow:hidden;margin-bottom:9px}
+.bar i{height:100%;transition:width .7s cubic-bezier(.2,.8,.2,1)}
+.bar .b-have{background:var(--have)} .bar .b-partial{background:var(--partial)} .bar .b-gap{background:var(--gap)}
+.cov-legend{display:flex;gap:13px;font-size:11.5px;font-weight:700;color:var(--ink2);flex-wrap:wrap}
+.cov-legend span{display:flex;align-items:center;gap:5px}
+.cov-legend i{width:8px;height:8px;border-radius:2px}
+.cov-core{margin-top:10px;font-size:11.5px;font-weight:700;color:var(--indigo);background:var(--indigo-soft);display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px}
+
+/* ---------- content ---------- */
+main{padding:14px 0 60px}
+.surface-head{display:flex;align-items:center;gap:12px;margin:22px 0 4px}
+.surface-head h2{font-size:21px;font-weight:850;letter-spacing:-.3px}
+.surface-head .badge{font-size:12px;font-weight:700;color:#fff;background:var(--accent);padding:3px 11px;border-radius:999px}
+.surface-head p{font-size:13px;color:var(--muted);margin-left:auto;font-weight:600}
+.module{margin-top:26px}
+.mod-head{display:flex;align-items:center;gap:11px;margin-bottom:13px;padding-bottom:9px;border-bottom:2px solid var(--line)}
+.mod-ico{width:32px;height:32px;border-radius:9px;background:var(--accent-soft);display:grid;place-items:center;font-size:16px;flex:none}
+.mod-name{font-size:16px;font-weight:800}
+.mod-count{font-size:11.5px;font-weight:700;color:var(--muted);background:var(--bg2);padding:2px 9px;border-radius:999px}
+.mod-mini{margin-left:auto;display:flex;gap:3px;align-items:center}
+.mod-mini i{width:16px;height:6px;border-radius:2px;display:inline-block}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+body.compact .grid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+body.compact .card{padding:13px 15px}
+body.compact .card .desc{display:none}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow);cursor:pointer;transition:transform .18s,box-shadow .18s,border-color .18s;position:relative;overflow:hidden;opacity:0;transform:translateY(14px)}
+.card.in{opacity:1;transform:none}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--sc)}
+.card:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg);border-color:var(--sc)}
+.card-top{display:flex;align-items:flex-start;gap:9px;margin-bottom:8px}
+.card-name{font-size:14.5px;font-weight:800;line-height:1.35;flex:1}
+.core-star{color:var(--indigo);font-size:13px;flex:none;title:"核心升级"}
+.pill{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;flex:none;letter-spacing:.3px}
+.pill.p0{color:#fff;background:var(--p0)} .pill.p1{color:#fff;background:var(--p1)} .pill.p2{color:#fff;background:var(--p2)}
+.status-tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px}
+.status-tag i{width:7px;height:7px;border-radius:50%}
+.st-have{color:var(--have);background:var(--have-soft)} .st-have i{background:var(--have)}
+.st-partial{color:var(--partial);background:var(--partial-soft)} .st-partial i{background:var(--partial)}
+.st-gap{color:var(--gap);background:var(--gap-soft)} .st-gap i{background:var(--gap)}
+.card .desc{font-size:12.5px;color:var(--ink2);line-height:1.55;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mod-tag{font-size:10.5px;font-weight:700;color:var(--muted);margin:-2px 0 7px;display:flex;align-items:center;gap:4px}
+.card-foot{display:flex;align-items:center;gap:8px}
+.card-foot .api{font-size:10.5px;color:var(--muted);font-weight:600;background:var(--bg2);padding:2px 8px;border-radius:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+.card-foot .more{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:3px}
+.empty{text-align:center;padding:70px 20px;color:var(--muted)}
+.empty .big{font-size:46px;margin-bottom:12px}
+.empty h3{font-size:17px;color:var(--ink2);margin-bottom:6px}
+
+/* ---------- drawer ---------- */
+.scrim{position:fixed;inset:0;background:rgba(33,28,21,.42);backdrop-filter:blur(3px);z-index:90;opacity:0;pointer-events:none;transition:.25s}
+.scrim.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100%);background:var(--surface);z-index:100;box-shadow:-12px 0 48px rgba(60,40,10,.22);transform:translateX(102%);transition:transform .32s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column}
+.drawer.open{transform:none}
+.dr-head{padding:20px 24px 16px;border-bottom:1px solid var(--line);position:relative;background:linear-gradient(160deg,var(--accent-soft),var(--surface))}
+.dr-close{position:absolute;top:16px;right:18px;width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:17px;color:var(--ink2);display:grid;place-items:center;transition:.15s}
+.dr-close:hover{background:var(--gap-soft);color:var(--gap);border-color:var(--gap)}
+.dr-mod{font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.dr-title{font-size:21px;font-weight:850;letter-spacing:-.3px;line-height:1.3;padding-right:40px;margin-bottom:11px}
+.dr-tags{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dr-body{padding:22px 24px;overflow-y:auto;flex:1}
+.dr-sec{margin-bottom:22px}
+.dr-sec h4{font-size:12px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px;display:flex;align-items:center;gap:7px}
+.dr-sec h4 .ln{flex:1;height:1px;background:var(--line)}
+.dr-sec p{font-size:13.5px;color:var(--ink2);line-height:1.7}
+.dr-ui{list-style:none;display:flex;flex-direction:column;gap:9px}
+.dr-ui li{font-size:13px;color:var(--ink2);line-height:1.6;padding-left:22px;position:relative}
+.dr-ui li::before{content:"";position:absolute;left:2px;top:8px;width:8px;height:8px;border-radius:3px;background:var(--accent);opacity:.8}
+.dr-didi{background:var(--bg2);border-left:3px solid var(--amber);border-radius:0 10px 10px 0;padding:12px 15px;font-size:13px;color:var(--ink2);line-height:1.65}
+.dr-note{font-size:12.5px;color:var(--muted);line-height:1.6;background:var(--surface2);border:1px dashed var(--line);border-radius:10px;padding:11px 14px}
+.dr-api{display:flex;flex-wrap:wrap;gap:7px}
+.dr-api code{font-size:11.5px;font-family:"SF Mono",Menlo,Consolas,monospace;background:var(--info-soft);color:var(--info);padding:4px 9px;border-radius:7px;font-weight:600}
+.dr-api code.new{background:var(--gap-soft);color:var(--gap)}
+.dr-nav{display:flex;gap:10px;padding:14px 24px;border-top:1px solid var(--line);background:var(--surface2)}
+.dr-nav button{flex:1;font-family:inherit;font-size:13px;font-weight:700;border:1.5px solid var(--line);background:var(--surface);color:var(--ink2);padding:10px;border-radius:11px;cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center;gap:6px}
+.dr-nav button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.dr-nav button:disabled{opacity:.4;cursor:not-allowed}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line);background:var(--surface2);padding:30px 0 40px;position:relative;z-index:1}
+.foot-grid{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start}
+.legend{display:flex;gap:18px;flex-wrap:wrap}
+.legend .li{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink2)}
+.legend .li i{width:11px;height:11px;border-radius:3px}
+.foot-note{font-size:12px;color:var(--muted);max-width:520px;line-height:1.7;margin-left:auto}
+.foot-note b{color:var(--ink2)}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;font-size:13px;font-weight:600;padding:11px 20px;border-radius:12px;box-shadow:var(--shadow-lg);z-index:120;opacity:0;pointer-events:none;transition:.28s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media(max-width:900px){
+  .hero-grid{grid-template-columns:1fr;gap:24px}
+  .route-card{order:-1}
+  .coverage{grid-template-columns:1fr}
+  .hbar{height:auto;flex-wrap:wrap;padding:10px 0;gap:10px}
+  .tabs{margin-left:0;order:3;width:100%;justify-content:space-between}
+  .search{order:2;margin-left:auto}
+  .search input,.search input:focus{width:160px}
+  .controls{top:0;position:relative}
+  .surface-head p{display:none}
+}
+@media(max-width:560px){
+  .wrap{padding:0 14px}
+  .grid{grid-template-columns:1fr}
+  .hero-stats{gap:8px}
+  .hstat{min-width:calc(50% - 4px);flex:1}
+  .ctrl-row{gap:8px}
+  .tab{padding:7px 10px;font-size:12.5px}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.card{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap hbar">
+    <div class="brand">
+      <span class="logo"><svg viewBox="0 0 24 24" fill="none"><path d="M5 11l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 11m-14 0h14m-14 0v5a1 1 0 001 1h1a1 1 0 001-1v-1h8v1a1 1 0 001 1h1a1 1 0 001-1v-5M7.5 14h.01M16.5 14h.01" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span>ride-pro 体验升级清单<small>对标滴滴 · 乘客 / 司机 / 管理三端</small></span>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="search" type="search" placeholder="搜索功能 / UI / 接口…" autocomplete="off">
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-mesh"></div>
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow"><span class="pulse"></span>体验升级规划 · 现状基于当前代码勘察</span>
+      <h1>把打车系统做成<br><span class="hl">滴滴级</span>的司乘体验</h1>
+      <p class="lede">以滴滴当前乘客端与车主端为标杆，逐项梳理 <b>乘客端 / 司机端 / 管理端</b> 的功能与 UI 升级点。司乘两端聚焦<b>核心体验升级</b>（地图导航、多车型同呼、安全中心、语音听单、服务分与合规），管理端补齐运营、风控与双账本监控。每项标注 <b>优先级 · 现状 · 滴滴对标 · 涉及接口</b>，可筛选检索。</p>
+      <div class="hero-stats" id="heroStats"></div>
+    </div>
+    <div class="route-card">
+      <div class="rc-top"><span class="rc-title">一次完整行程</span><span class="rc-chip">叫车 → 接驾 → 送驾 → 支付</span></div>
+      <svg class="route-svg" viewBox="0 0 360 210" fill="none">
+        <defs>
+          <linearGradient id="rg" x1="0" y1="0" x2="360" y2="210"><stop stop-color="#FF6A00"/><stop offset="1" stop-color="#0E9F8A"/></linearGradient>
+        </defs>
+        <g stroke="#E3D9C8" stroke-width="1">
+          <path d="M0 52h360M0 105h360M0 158h360M60 0v210M140 0v210M220 0v210M300 0v210"/>
+        </g>
+        <path d="M40 165 C 110 165, 120 60, 200 60 S 300 120, 322 48" stroke="url(#rg)" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 9" id="routePath"/>
+        <circle cx="40" cy="165" r="9" fill="#15A34A"/><circle cx="40" cy="165" r="4" fill="#fff"/>
+        <circle cx="322" cy="48" r="9" fill="#E23D3D"/><circle cx="322" cy="48" r="4" fill="#fff"/>
+        <g id="carMarker"><circle r="13" fill="#FF6A00" opacity=".2"/><circle r="8" fill="#FF6A00"/><path d="M-3.5 1l1-3a1 1 0 011-.7h3a1 1 0 011 .7l1 3m-7 0h7m-7 0v2.5h1.2v-1h4.6v1H3.5V1" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/></g>
+        <text x="30" y="190" font-size="11" fill="#15A34A" font-weight="700">上车点</text>
+        <text x="290" y="34" font-size="11" fill="#E23D3D" font-weight="700">目的地</text>
+        <text x="150" y="120" font-size="10.5" fill="#8A7E6E" font-weight="600">实时轨迹 · ETA · 安全护航</text>
+      </svg>
+      <div class="rc-legend">
+        <span><i style="background:var(--have)"></i>已有能力</span>
+        <span><i style="background:var(--partial)"></i>部分具备</span>
+        <span><i style="background:var(--gap)"></i>待补齐</span>
+        <span><i style="background:var(--indigo)"></i>★ 核心升级</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="controls">
+  <div class="wrap ctrl-row">
+    <div class="ctrl-group"><span class="ctrl-lbl">优先级</span><div id="prioChips" class="ctrl-group"></div></div>
+    <div class="ctrl-group"><span class="ctrl-lbl">现状</span><div id="statusChips" class="ctrl-group"></div></div>
+    <label class="toggle"><input type="checkbox" id="coreOnly"><span class="track"></span>只看核心升级 ★</label>
+    <div class="ctrl-group"><span class="ctrl-lbl">排序</span>
+      <select class="ctrl" id="sort">
+        <option value="module">按旅程模块</option>
+        <option value="priority">按优先级 P0→P2</option>
+        <option value="gap">按缺口 待补→已有</option>
+      </select>
+    </div>
+    <label class="toggle"><input type="checkbox" id="compact"><span class="track"></span>紧凑</label>
+    <div class="ctrl-spacer"></div>
+    <span class="result-count" id="resultCount"></span>
+    <button class="btn" id="reset">↺ 重置</button>
+    <button class="btn primary" id="export">⬇ 导出清单 CSV</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="coverage" id="coverage"></div>
+  <main id="content"></main>
+</div>
+
+<footer>
+  <div class="wrap foot-grid">
+    <div class="legend">
+      <span class="li"><i style="background:var(--have)"></i>已有：当前代码已实现</span>
+      <span class="li"><i style="background:var(--partial)"></i>部分：有基础需增强</span>
+      <span class="li"><i style="background:var(--gap)"></i>缺失：需新建</span>
+      <span class="li"><i style="background:var(--p0)"></i>P0 核心</span>
+      <span class="li"><i style="background:var(--p1)"></i>P1 增强</span>
+      <span class="li"><i style="background:var(--p2)"></i>P2 远期</span>
+    </div>
+    <p class="foot-note"><b>说明：</b>本清单为升级规划，「现状」基于对 <b>passenger.html / driver.html / admin.html / AdminController</b> 的实际勘察；「滴滴对标」为体验参照，非像素级还原。★ 标记为司乘核心升级项。接口标注 <b>已有</b> 表示后端已就绪，<b>需新增</b> 表示需配套开发。资金一致性 / 守恒校验 / outbox+镜像重放 / traceId 全链路日志为现有优势，升级中保留。</p>
+  </div>
+</footer>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dr-head">
+    <button class="dr-close" id="drClose" aria-label="关闭">✕</button>
+    <div class="dr-mod" id="drMod"></div>
+    <div class="dr-title" id="drTitle"></div>
+    <div class="dr-tags" id="drTags"></div>
+  </div>
+  <div class="dr-body" id="drBody"></div>
+  <div class="dr-nav">
+    <button id="drPrev">← 上一项</button>
+    <button id="drNext">下一项 →</button>
+  </div>
+</aside>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================ 数据 ============================ */
+const S = {have:'已有', partial:'部分', gap:'缺失'};
+const P = {P0:'P0 核心', P1:'P1 增强', P2:'P2 远期'};
+// item: n名称 d描述 u[UI要点] b滴滴对标 p优先级 s现状 c核心 a接口 note现状说明
+const DATA = {
+passenger:{label:'乘客端', icon:'🧍', accent:'var(--orange)', soft:'var(--amber-soft)', sub:'对标滴滴乘客 App · 核心体验升级', modules:[
+ {name:'首页与定位', icon:'🗺️', items:[
+  {n:'真实地图与定位', d:'接入真实地图瓦片与 GPS/浏览器定位，替代当前 canvas 示意地图，支持拖拽选点与一键回中。', u:['全屏地图为首页主体，底部浮层卡片承载叫车流程','定位蓝点+精度圈，拖动地图时中心大头针吸附选点','顶部悬浮搜索栏，底部「回家/去公司」快捷 chips'], b:'滴滴首页即地图，底部抽屉式叫车面板，定位大头针吸附选点。', p:'P0', s:'partial', c:true, a:'需新增地图 SDK + /api/locations/nearby', note:'当前为 common.js 的 canvas MapView 示意地图 + PRESETS 预设地标，无真实瓦片与定位。'},
+  {n:'快捷地址与常用路线', d:'首页展示家/公司/常去地点，一键发起常用路线叫车。', u:['圆形图标 chips 横向滑动','空态引导设置家/公司','点击直接回填起终点并报价'], b:'滴滴首页「回家」「去公司」大按钮，一键叫车。', p:'P1', s:'gap', c:false, a:'需新增收藏地址接口', note:'当前仅有地图预设地标下拉，无个人常用地址。'},
+  {n:'城市与服务开通', d:'城市选择与 serviceType 开通范围提示。', u:['顶部城市切换入口','未开通区域灰态+提示文案'], b:'滴滴城市列表+定位城市，按城市展示可用车型。', p:'P2', s:'gap', c:false, a:'需新增城市配置', note:'当前默认北京 PRESETS，无城市概念。'}
+ ]},
+ {name:'地址与搜索', icon:'🔍', items:[
+  {n:'地址搜索联想', d:'起终点输入实时 POI 联想、拼音/模糊匹配，与地图联动。', u:['全屏搜索页，输入即出候选（名称+地址+距离）','选中回填并定位地图','支持拼音首字母与错字容错'], b:'滴滴地址搜索页带历史/联想/地图联动，输入即搜。', p:'P0', s:'gap', c:true, a:'需新增 POI 搜索（地图 SDK）', note:'当前只能地图点击或预设下拉选点，无文本搜索。'},
+  {n:'历史与收藏地址', d:'搜索历史与收藏地点管理。', u:['历史列表可一键清空','收藏星标，长按编辑/删除'], b:'滴滴搜索历史+收藏地址，常用地点置顶。', p:'P1', s:'gap', c:false, a:'需新增历史/收藏接口', note:'无。'},
+  {n:'上车点推荐', d:'根据定位推荐准确上车点（门口/路口），减少司乘互相找不到。', u:['地图绿色上车点气泡','「在此上车」确认按钮','可拖动微调'], b:'滴滴推荐上车点，引导到准确位置。', p:'P1', s:'gap', c:false, a:'需新增上车点推荐', note:'当前起点为任意点击坐标，无推荐上车点。'}
+ ]},
+ {name:'车型与计价', icon:'🚗', items:[
+  {n:'多车型同时呼叫', d:'勾选多个车型一起呼叫，先应答先接驾，显著提升成功率。', u:['车型列表多选 checkbox','底部「同时呼叫 N 种车型」主按钮','各车型价格区间并列展示'], b:'滴滴多车型同呼/一键全选，先接先走。', p:'P0', s:'gap', c:true, a:'需扩展 /api/orders 支持多 serviceType', note:'当前车型为单选（EXPRESS/PREMIER/TAXI 三选一）。'},
+  {n:'车型体系扩充', d:'在快车/专车/出租基础上增加特惠快车、拼车、优享、豪华车等。', u:['车型卡片含图标/预估价/时效/优惠标签','横向滑动车型栏，选中态高亮'], b:'滴滴特惠快车/青菜拼车/优享/专车/豪华车/出租车分层。', p:'P1', s:'partial', c:false, a:'需新增 serviceType 与计价规则', note:'已有 EXPRESS/PREMIER/TAXI 三种，缺特惠/拼车/优享/豪华。'},
+  {n:'拼车', d:'拼车一口价，拼成/未拼成差异化计价与拼友进度。', u:['拼车开关+一口价','拼友匹配进度与绕行提示'], b:'滴滴青菜拼车，拼成更便宜。', p:'P2', s:'gap', c:false, a:'需新增拼车撮合', note:'无。'},
+  {n:'预估价与明细', d:'保留现有 quote 预估，升级为分车型实时预估与可展开计价明细。', u:['价格大数字+「明细」展开','起步/里程/时长/远途/动态分项','计价规则说明弹层'], b:'滴滴预估价+计价规则透明展示。', p:'P0', s:'have', c:true, a:'/api/pricing/quote（已有）', note:'已有 quote + fareHtml 明细，需增强分车型与规则说明。'},
+  {n:'动态调价与优惠提示', d:'高峰溢价/优惠明示，价格透明可解释。', u:['价格旁「高峰加价 ×1.2」标签','点击弹出调价说明'], b:'滴滴动态调价透明展示+说明。', p:'P1', s:'gap', c:false, a:'需扩展计价规则', note:'当前计价无动态调价展示。'},
+  {n:'优惠券选择', d:'叫车前选择优惠券抵扣。', u:['价格行「优惠券 -¥5」可点选','券列表弹层+不可用原因'], b:'滴滴叫车页券选择与抵扣。', p:'P1', s:'gap', c:false, a:'需新增优惠券', note:'无券体系。'}
+ ]},
+ {name:'呼叫与应答', icon:'📡', items:[
+  {n:'呼叫与派单', d:'保留 requestId 幂等呼叫与派单，升级呼叫动效与多车型并行。', u:['呼叫按钮雷达扩散动效','等待文案「正在为您寻找司机」+已等待时长'], b:'滴滴呼叫雷达动画+等待进度。', p:'P0', s:'have', c:true, a:'/api/orders（已有）', note:'已有 requestId 幂等呼叫 + dispatch 派单。'},
+  {n:'排队与加价调度', d:'无车时排队或加价提高接单优先级。', u:['排队位次展示','「加价 ¥X 更快接单」可选'], b:'滴滴排队/调度费提升接单。', p:'P2', s:'gap', c:false, a:'需新增排队/调度', note:'当前无车即 EXPIRED，无排队。'},
+  {n:'取消与取消费', d:'保留 2 分钟免费/¥3 取消费规则，升级取消挽留与规则透明。', u:['取消确认弹层明示是否收费','取消原因选择','挽留文案+继续等待选项'], b:'滴滴取消挽留+取消费规则说明。', p:'P0', s:'have', c:true, a:'/api/orders/{id}/cancel（已有）', note:'已有 120s 免费窗口与 ARRIVED 后 ¥3 取消费（全额给司机）。'},
+  {n:'改派与重新呼叫', d:'司机取消/超时后自动改派或一键重呼。', u:['改派提示+倒计时自动重呼','一键重新呼叫按钮'], b:'滴滴司机取消后自动改派。', p:'P1', s:'partial', c:false, a:'需扩展派单改派', note:'已有 EXPIRED/CANCELLED 后「重新叫车」，无自动改派。'}
+ ]},
+ {name:'接驾等待', icon:'⏳', items:[
+  {n:'司机与车辆卡片', d:'在车牌/车型基础上增加司机头像、姓名、评分、服务次数、车辆颜色。', u:['卡片含头像+星级+车牌+车型颜色','可展开司机详情','服务次数与好评率'], b:'滴滴司机卡片含头像/评分/车牌/车型颜色。', p:'P0', s:'partial', c:true, a:'需扩展 OrderDTO/DriverDTO', note:'当前仅展示司机姓名/车牌/车型，无头像/评分/颜色。'},
+  {n:'接驾 ETA 与距离', d:'实时计算司机距我距离与预计到达时间。', u:['「司机距您 1.2km · 约 3 分钟」气泡','随司机移动实时刷新'], b:'滴滴接驾 ETA 与距离实时展示。', p:'P0', s:'partial', c:true, a:'需新增 ETA 计算（路径规划）', note:'已有司机位置 marker，但无距离/ETA 计算展示。'},
+  {n:'司机实时位置与轨迹', d:'保留 WS DRIVER_LOCATION + 地图 marker，升级平滑移动动画与朝向。', u:['小车图标沿路径平滑移动','车头朝向随路线旋转','断线兜底轮询'], b:'滴滴司机实时位置平滑移动。', p:'P0', s:'have', c:true, a:'/api/locations + WS（已有）', note:'已有 WS 推送 + 4s 兜底轮询 + 地图 marker/轨迹。'},
+  {n:'联系司机', d:'虚拟号拨打/IM 消息联系司机，保护双方号码。', u:['「联系司机」按钮→虚拟号拨打','IM 快捷短语「我到了」「请稍等」'], b:'滴滴号码保护+IM 快捷消息。', p:'P0', s:'gap', c:true, a:'需新增虚拟号/IM', note:'当前司乘无法直接联系。'},
+  {n:'行程分享', d:'保留 share link，升级为实时位置分享给紧急联系人。', u:['分享卡片含实时轨迹链接','有效期与撤销','一键发给紧急联系人'], b:'滴滴行程分享实时位置给亲友。', p:'P1', s:'have', c:false, a:'/api/share（已有）', note:'已有分享链接复制，无实时位置共享。'}
+ ]},
+ {name:'行程中', icon:'🛣️', items:[
+  {n:'行程实时地图与路线', d:'展示剩余路线、ETA 与已走轨迹。', u:['地图导航态，剩余路线高亮','预计到达时间实时更新','已走轨迹淡色留存'], b:'滴滴行程中导航视图+剩余 ETA。', p:'P0', s:'partial', c:true, a:'需新增路径规划', note:'已有轨迹点上报与展示，无剩余路线规划/ETA。'},
+  {n:'修改目的地/途经点', d:'行程中修改目的地并重新计价。', u:['「修改目的地」入口','新预估价确认弹层','途经点添加'], b:'滴滴行程中修改目的地。', p:'P1', s:'gap', c:false, a:'需扩展 order', note:'无。'},
+  {n:'舒适偏好', d:'空调/音乐/安静模式偏好告知司机。', u:['偏好 chips 选择','同步至司机端展示'], b:'滴滴舒适设置（安静/空调等）。', p:'P2', s:'gap', c:false, a:'需新增偏好同步', note:'无。'},
+  {n:'行程安全守护', d:'行程中偏航/异常停留检测与主动提醒。', u:['顶部安全盾牌常驻','异常弹出「是否安全」确认','超时未响应升级提醒'], b:'滴滴安全护航偏航/异常停留提醒。', p:'P0', s:'gap', c:true, a:'需新增轨迹分析', note:'无行程异常检测。'}
+ ]},
+ {name:'安全中心', icon:'🛡️', items:[
+  {n:'安全中心入口', d:'独立安全中心聚合录音/紧急联系人/110/号码保护/行程分享。', u:['盾牌悬浮按钮→安全中心面板','红色紧急区+常用安全工具','行程中常驻可见'], b:'滴滴安全中心一站式安全工具。', p:'P0', s:'gap', c:true, a:'需新增安全中心', note:'当前无任何安全中心入口。'},
+  {n:'全程录音', d:'行程录音保护司乘，加密留存。', u:['录音开关+状态指示','隐私说明与授权'], b:'滴滴全程录音保护。', p:'P1', s:'gap', c:false, a:'需新增录音', note:'无。'},
+  {n:'紧急联系人与一键报警', d:'预设紧急联系人，110/120 一键呼叫并推送实时位置。', u:['红色 SOS 长按触发','自动分享位置给紧急联系人','误触防护'], b:'滴滴紧急联系人/110 报警。', p:'P0', s:'gap', c:true, a:'需新增紧急求助', note:'无。'},
+  {n:'号码保护', d:'司乘虚拟号互拨，隐藏真实号码。', u:['联系按钮默认虚拟号','通话记录脱敏'], b:'滴滴号码保护。', p:'P1', s:'gap', c:false, a:'需新增虚拟号', note:'无。'}
+ ]},
+ {name:'到达与支付', icon:'💳', items:[
+  {n:'账单明细', d:'保留实际费用明细，升级为独立账单页含里程/时长/优惠/取消费分项。', u:['账单大数字+分项列表','「对费用有疑问」入口','优惠/取消费单独标注'], b:'滴滴账单明细分项清晰。', p:'P0', s:'have', c:true, a:'/api/orders（已有）', note:'已有 fareHtml 实际费用明细。'},
+  {n:'多支付方式', d:'在钱包余额基础上增加微信/支付宝/银行卡/先乘后付。', u:['支付方式选择列表','默认支付设置','支付渠道图标'], b:'滴滴多支付渠道+先乘后付。', p:'P0', s:'gap', c:true, a:'需新增支付渠道（对接 payment-pro）', note:'当前仅钱包余额扣款一种方式。'},
+  {n:'免密自动扣款', d:'保留 autoPay 开关，升级先乘后付信用授权。', u:['免密开关+授权说明','额度与解约入口'], b:'滴滴先乘后付/免密支付。', p:'P1', s:'have', c:false, a:'/api/wallets autopay（已有）', note:'已有 autoPay 免密自动扣款开关。'},
+  {n:'支付结果确认', d:'保留网络异常轮询确认不重复扣款，增强结果态提示。', u:['支付中/成功/失败明确态','失败重试与客服入口'], b:'滴滴支付结果态清晰。', p:'P0', s:'have', c:true, a:'已有轮询确认', note:'已有 pollPayResult 8×2s 轮询，不盲目重试。'},
+  {n:'发票', d:'行程开票、抬头管理、批量开票。', u:['发票中心+按行程勾选','抬头管理+电子发票'], b:'滴滴发票中心。', p:'P1', s:'gap', c:false, a:'需新增发票', note:'无。'}
+ ]},
+ {name:'评价与售后', icon:'⭐', items:[
+  {n:'标签化评价', d:'保留星级+评论，升级标签化评价与匿名。', u:['星级+标签 chips（整洁/平稳/态度）','匿名开关','评论选填'], b:'滴滴标签化评价+匿名。', p:'P0', s:'have', c:true, a:'/api/orders/{id}/rate（已有）', note:'已有 ratingModal 星级+评论，无标签/匿名。'},
+  {n:'打赏/感谢', d:'评价后小额打赏司机。', u:['「感谢司机 ¥2/5/10」','打赏入账司机钱包'], b:'滴滴打赏司机。', p:'P2', s:'gap', c:false, a:'需新增打赏', note:'无。'},
+  {n:'投诉与客服', d:'费用异议/服务投诉/失物招领入口与工单。', u:['「对订单有疑问」→问题分类','在线客服/工单提交','处理进度可查'], b:'滴滴客服/投诉/失物招领。', p:'P0', s:'gap', c:true, a:'需新增工单', note:'当前无客服/投诉入口。'},
+  {n:'失物招领', d:'联系司机找回失物。', u:['失物入口+虚拟号联系司机','失物登记'], b:'滴滴失物招领。', p:'P2', s:'gap', c:false, a:'需新增失物', note:'无。'}
+ ]},
+ {name:'订单中心', icon:'📋', items:[
+  {n:'订单记录', d:'保留筛选/分页/统计，升级卡片化与状态色。', u:['订单卡片含路线/时间/金额/状态色条','状态/日期筛选+分页','总订单/累计消费/今日完成统计'], b:'滴滴行程列表卡片化。', p:'P1', s:'have', c:false, a:'/api/orders（已有）', note:'已有筛选+分页+统计，样式偏表格化。'},
+  {n:'订单详情', d:'保留抽屉详情，升级含轨迹回放/账单/评价/客服。', u:['详情页分区展示','轨迹回放地图','一键客服/再来一单'], b:'滴滴订单详情含轨迹与账单。', p:'P1', s:'have', c:false, a:'已有详情抽屉', note:'已有 openOrderDetail 抽屉。'},
+  {n:'再来一单', d:'保留一键复用起终点。', u:['一键复用起终点直接呼叫'], b:'滴滴再来一单。', p:'P2', s:'have', c:false, a:'已有', note:'已有「再来一单」。'},
+  {n:'行程凭证/报销', d:'行程单导出用于报销。', u:['导出 PDF/邮件行程单'], b:'滴滴行程单报销。', p:'P2', s:'gap', c:false, a:'需新增行程单', note:'无。'}
+ ]},
+ {name:'钱包与营销', icon:'👛', items:[
+  {n:'钱包余额/充值/流水', d:'保留幂等充值+流水筛选分页，美化余额卡。', u:['余额卡+充值快捷额（¥50/100/200）','流水列表+类型色','幂等 bizNo 防重复充值'], b:'滴滴钱包余额/充值/账单。', p:'P1', s:'have', c:false, a:'/api/wallets（已有）', note:'已有余额/幂等充值/流水筛选分页。'},
+  {n:'优惠券中心', d:'券列表/领取/过期提醒。', u:['券卡片（满减/折扣/有效期）','领取中心+过期提醒'], b:'滴滴券中心。', p:'P1', s:'gap', c:false, a:'需新增优惠券', note:'无。'},
+  {n:'会员与积分', d:'会员等级/积分/权益。', u:['会员卡+积分进度','权益列表'], b:'滴滴会员/积分体系。', p:'P2', s:'gap', c:false, a:'需新增会员', note:'无。'},
+  {n:'活动与拉新', d:'邀请有礼/活动 banner。', u:['首页活动位','邀请页+奖励进度'], b:'滴滴邀请有礼。', p:'P2', s:'gap', c:false, a:'需新增活动', note:'无。'}
+ ]},
+ {name:'个人中心与设置', icon:'👤', items:[
+  {n:'个人中心', d:'头像/昵称/手机号/设置聚合页。', u:['我的页头部+功能列表','订单/钱包/客服快捷入口'], b:'滴滴「我的」聚合页。', p:'P1', s:'partial', c:false, a:'/api/passengers（已有）', note:'当前仅顶部身份 chip + 注册弹层，无独立个人中心。'},
+  {n:'设置', d:'通知/隐私/支付/地址管理。', u:['设置分组列表','通知与隐私开关'], b:'滴滴设置。', p:'P2', s:'gap', c:false, a:'需新增设置', note:'无。'},
+  {n:'地址管理', d:'家/公司/收藏地址编辑。', u:['地址列表+编辑/删除','地图选点编辑'], b:'滴滴地址管理。', p:'P1', s:'gap', c:false, a:'需新增地址管理', note:'无。'}
+ ]},
+ {name:'消息与通知', icon:'🔔', items:[
+  {n:'消息通知中心', d:'订单/支付/活动消息聚合，替代纯 toast。', u:['消息中心分类+未读红点','点击直达对应订单'], b:'滴滴消息中心。', p:'P1', s:'partial', c:false, a:'需新增消息中心', note:'当前为 toast + 实时事件日志，无聚合消息中心。'},
+  {n:'系统推送', d:'关键节点系统级推送。', u:['通知栏推送+点击直达','接驾/到达/支付提醒'], b:'滴滴关键节点推送。', p:'P1', s:'partial', c:false, a:'WS 已有', note:'已有 WS + 浏览器 Notification（司机端），乘客端推送可增强。'}
+ ]},
+ {name:'无障碍与关怀', icon:'♿', items:[
+  {n:'长辈模式', d:'大字体/简化流程/电话叫车。', u:['大字版界面','一键电话叫车','简化叫车步骤'], b:'滴滴长辈版。', p:'P2', s:'gap', c:false, a:'需新增长辈模式', note:'无。'},
+  {n:'无障碍', d:'读屏/高对比度/无障碍车型。', u:['语义化标签+读屏支持','无障碍车型呼叫'], b:'滴滴无障碍服务。', p:'P2', s:'gap', c:false, a:'需新增无障碍', note:'无。'},
+  {n:'多语言', d:'中英文切换。', u:['语言切换','关键文案国际化'], b:'滴滴多语言。', p:'P2', s:'gap', c:false, a:'需新增 i18n', note:'当前仅中文。'}
+ ]}
+]},
+driver:{label:'司机端', icon:'🚕', accent:'var(--teal)', soft:'var(--teal-soft)', sub:'对标滴滴车主 App · 核心体验升级', modules:[
+ {name:'出车与听单', icon:'🟢', items:[
+  {n:'出车/收车听单', d:'保留 OFFLINE/ONLINE/BUSY，升级出车检查与听单态可视。', u:['大圆按钮出车/收车','状态环+今日在线时长','出车前合规/定位检查'], b:'滴滴车主出车大按钮+听单状态。', p:'P0', s:'have', c:true, a:'/api/drivers/{id}/online（已有）', note:'已有上线听单/下线休息与状态徽章。'},
+  {n:'听单偏好', d:'设置接单类型/最远接驾距离/顺路/区域。', u:['听单设置面板','车型/距离滑块','顺路开关'], b:'滴滴车主听单偏好设置。', p:'P0', s:'gap', c:true, a:'需新增听单偏好', note:'当前上线即接全部邀约，无偏好过滤。'},
+  {n:'顺路单', d:'设定回家/目的地顺路接单。', u:['顺路目的地设置','匹配度展示'], b:'滴滴顺路单。', p:'P1', s:'gap', c:false, a:'需新增顺路撮合', note:'无。'},
+  {n:'自动抢单', d:'符合条件的单自动接。', u:['自动抢单开关+条件设置'], b:'滴滴自动接单。', p:'P1', s:'gap', c:false, a:'需扩展派单', note:'当前需手动抢单。'}
+ ]},
+ {name:'接单与邀约', icon:'📨', items:[
+  {n:'邀约卡片', d:'保留抢单/指派+倒计时+收入预估，升级信息层级与视觉。', u:['大卡片含起点/终点/距离/预估收入','倒计时环+进度条','我的收入（80%）突出'], b:'滴滴车主邀约弹层信息清晰。', p:'P0', s:'have', c:true, a:'ORDER_OFFER WS（已有）', note:'已有邀约卡片+15s 倒计时+距乘客距离+80%收入。'},
+  {n:'语音播报', d:'新单语音播报，解放双手安全接单。', u:['播报开关+音量','TTS 读单（起点/距离/收入）'], b:'滴滴车主语音播报新单。', p:'P0', s:'gap', c:true, a:'需新增 TTS 播报', note:'当前仅浏览器 Notification，无语音。'},
+  {n:'邀约详情与导航预览', d:'接单前预览路线/距离/收益。', u:['展开路线缩略图','收益明细（车费/补贴/抽成）'], b:'滴滴邀约详情含路线预览。', p:'P1', s:'partial', c:false, a:'需新增路径预览', note:'已有距离/收入文字，无路线预览。'},
+  {n:'拒绝与忽略', d:'保留拒绝邀约。', u:['拒绝按钮+原因（可选）'], b:'滴滴忽略/拒绝。', p:'P2', s:'have', c:false, a:'已有', note:'已有拒绝。'}
+ ]},
+ {name:'接驾导航', icon:'🧭', items:[
+  {n:'接驾导航', d:'真实导航到上车点，替代当前模拟驾驶。', u:['全屏导航+转向提示','剩余距离/时间','偏航重算'], b:'滴滴车主接驾导航。', p:'P0', s:'gap', c:true, a:'需新增地图导航 SDK', note:'当前为 canvas 地图 + 模拟驾驶自动移动，无真实导航。'},
+  {n:'联系乘客', d:'虚拟号/IM 联系乘客。', u:['联系按钮+快捷短语「我已到达」','虚拟号保护'], b:'滴滴联系乘客。', p:'P0', s:'gap', c:true, a:'需新增虚拟号/IM', note:'当前司机无法联系乘客。'},
+  {n:'到达确认', d:'保留 ARRIVED，升级到达自动检测与等待计时。', u:['到达按钮+自动检测','免费等待倒计时'], b:'滴滴到达确认+等待计时。', p:'P0', s:'have', c:true, a:'/api/orders/{id}/arrive（已有）', note:'已有「到达上车点」按钮。'},
+  {n:'等待计时与超时', d:'乘客迟到计时与超时取消补偿。', u:['等待计时器','超时取消+补偿提示'], b:'滴滴等待计时/超时补偿。', p:'P1', s:'gap', c:false, a:'需新增等待计时', note:'无等待计时。'},
+  {n:'模拟驾驶（演示）', d:'保留演示用自动移动+轨迹上报，真实导航上线后弱化为演示开关。', u:['演示开关','自动沿路线移动'], b:'滴滴无（演示特性）。', p:'P2', s:'have', c:false, a:'/api/locations（已有）', note:'已有模拟驾驶 0.004°/s 自动移动+轨迹上报。'}
+ ]},
+ {name:'行程送驾', icon:'🛣️', items:[
+  {n:'送驾导航', d:'导航到目的地。', u:['导航态+剩余 ETA','转向/限速提示'], b:'滴滴送驾导航。', p:'P0', s:'gap', c:true, a:'需新增导航', note:'无真实导航。'},
+  {n:'行程状态流转', d:'保留开始/结束行程，升级滑动确认防误触。', u:['滑动确认开始/结束','状态时间线'], b:'滴滴滑动开始/结束行程。', p:'P0', s:'have', c:true, a:'/api/orders/{id}/start|complete（已有）', note:'已有开始/结束行程按钮。'},
+  {n:'行程录音', d:'录音保护司机，纠纷取证。', u:['录音指示+隐私说明'], b:'滴滴行程录音。', p:'P1', s:'gap', c:false, a:'需新增录音', note:'无。'},
+  {n:'偏航与异常提醒', d:'偏航提醒避免绕路纠纷。', u:['偏航提示+重新规划'], b:'滴滴偏航提醒。', p:'P1', s:'gap', c:false, a:'需新增轨迹分析', note:'无。'},
+  {n:'乘客信息与备注', d:'乘客昵称/备注/代叫标识。', u:['乘客卡片+代叫标识','备注展示'], b:'滴滴乘客信息。', p:'P2', s:'partial', c:false, a:'需扩展 OrderDTO', note:'已有乘客姓名，无代叫/备注。'}
+ ]},
+ {name:'结算与收款', icon:'🧾', items:[
+  {n:'结束结算', d:'保留实际费用+80%收入，升级账单确认与异议。', u:['结算账单+收入明细','抽成/补贴分项','确认收款'], b:'滴滴车主结算页。', p:'P0', s:'partial', c:true, a:'/api/orders/{id}/complete（已有）', note:'已有实际费用与预计收入，缺独立结算账单页。'},
+  {n:'收款状态', d:'保留等待支付→PAID 入账，升级到账提醒。', u:['收款状态+到账通知','未支付提醒'], b:'滴滴收款到账提醒。', p:'P0', s:'have', c:true, a:'WS ORDER_PAID（已有）', note:'已有等待乘客支付→PAID 入账。'},
+  {n:'评价乘客', d:'保留评价乘客，升级标签。', u:['星级+标签（守时/文明）'], b:'滴滴评价乘客。', p:'P1', s:'have', c:false, a:'已有', note:'已有评价乘客。'},
+  {n:'司机取消与判责', d:'保留取消影响服务分，升级原因与判责透明。', u:['取消原因选择','判责说明+申诉入口'], b:'滴滴司机取消判责。', p:'P1', s:'have', c:false, a:'已有', note:'已有司机取消（影响服务分/重新派单）。'}
+ ]},
+ {name:'收入与钱包', icon:'💰', items:[
+  {n:'余额/可用/冻结', d:'保留钱包三态。', u:['收入卡（总/可用/冻结）','冻结说明'], b:'滴滴车主钱包。', p:'P0', s:'have', c:true, a:'/api/wallets（已有）', note:'已有余额/可用/冻结展示。'},
+  {n:'今日收入/服务分', d:'保留今日收入与服务分，升级实时累计。', u:['今日收入大数字+单数','服务分入口'], b:'滴滴今日流水。', p:'P1', s:'have', c:false, a:'已有', note:'已有今日收入（PAY_CREDIT+CANCEL_FEE_CREDIT）与服务分。'},
+  {n:'提现', d:'保留幂等提现冻结→到账，升级进度可视化。', u:['提现金额+到账进度条','提现记录（受理/处理中/成功/失败）','失败解冻说明'], b:'滴滴车主提现。', p:'P0', s:'have', c:true, a:'/api/wallets/{id}/withdraw（已有）', note:'已有幂等 WD-* 提现+冻结→渠道→到账/失败解冻+3s 轮询。'},
+  {n:'收入趋势图表', d:'日/周/月收入趋势与构成分析。', u:['折线/柱状图','时段对比+收入构成'], b:'滴滴车主收入分析。', p:'P1', s:'gap', c:false, a:'需新增聚合', note:'当前仅今日收入数字，无趋势图。'},
+  {n:'收入流水', d:'保留筛选分页流水。', u:['流水列表+类型色','筛选+分页'], b:'滴滴流水明细。', p:'P1', s:'have', c:false, a:'已有', note:'已有收入流水筛选分页。'}
+ ]},
+ {name:'奖励与任务', icon:'🎁', items:[
+  {n:'任务中心', d:'冲单奖/时段奖/连续在线任务。', u:['任务卡片+进度条','奖励领取'], b:'滴滴车主奖励任务。', p:'P1', s:'gap', c:false, a:'需新增任务', note:'无奖励体系。'},
+  {n:'高峰/区域奖励', d:'高峰补贴/热区奖励。', u:['奖励地图+时段提示'], b:'滴滴高峰奖。', p:'P2', s:'gap', c:false, a:'需新增', note:'无。'},
+  {n:'邀请司机', d:'拉新奖励。', u:['邀请页+奖励进度'], b:'滴滴邀请司机。', p:'P2', s:'gap', c:false, a:'需新增', note:'无。'}
+ ]},
+ {name:'服务分与口碑', icon:'🏅', items:[
+  {n:'服务分详情', d:'保留服务分，升级分项与提升建议。', u:['分数环+分项雷达（接单/取消/评价/合规）','提升任务建议'], b:'滴滴服务分/口碑值分项。', p:'P0', s:'partial', c:true, a:'需扩展服务分', note:'当前仅一个服务分数字，无分项与提升路径。'},
+  {n:'等级与权益', d:'司机等级/优先派单权益。', u:['等级徽章+权益列表','升级进度'], b:'滴滴司机等级权益。', p:'P1', s:'gap', c:false, a:'需新增等级', note:'无。'},
+  {n:'评价与口碑', d:'乘客评价聚合展示。', u:['评价列表+标签统计','好评率'], b:'滴滴车主口碑。', p:'P1', s:'partial', c:false, a:'需扩展评价聚合', note:'已有评价数据，无司机侧聚合展示。'}
+ ]},
+ {name:'合规与证件', icon:'📑', items:[
+  {n:'双证合规', d:'网约车驾驶员证/运输证上传与审核状态。', u:['证件上传+审核进度','合规状态提示','到期提醒'], b:'滴滴合规双证。', p:'P0', s:'gap', c:true, a:'需新增证件审核', note:'当前注册仅姓名/车牌/车型，无证件合规。'},
+  {n:'车辆证件', d:'行驶证/保险/年检管理。', u:['证件列表+到期提醒'], b:'滴滴车辆证件。', p:'P1', s:'gap', c:false, a:'需新增', note:'无。'},
+  {n:'人脸核验', d:'出车人脸验证防替驾。', u:['出车前人脸核验'], b:'滴滴人脸核验。', p:'P1', s:'gap', c:false, a:'需新增人脸', note:'无。'}
+ ]},
+ {name:'车辆与能源', icon:'🔧', items:[
+  {n:'车辆管理', d:'车辆信息/照片/保养。', u:['车辆卡片+照片','保养提醒'], b:'滴滴车辆管理。', p:'P1', s:'partial', c:false, a:'/api/drivers（已有）', note:'已有车牌/车型，无照片/保养。'},
+  {n:'充电/加油', d:'充电桩/加油站指引与优惠。', u:['能源地图+优惠'], b:'滴滴小桔充电。', p:'P2', s:'gap', c:false, a:'需新增', note:'无。'}
+ ]},
+ {name:'安全与疲劳', icon:'🚨', items:[
+  {n:'疲劳驾驶提醒', d:'连续在线/夜间时长提醒并强制休息。', u:['疲劳弹窗+休息倒计时','强制收车'], b:'滴滴疲劳驾驶提醒。', p:'P0', s:'gap', c:true, a:'需新增疲劳检测', note:'无疲劳管理。'},
+  {n:'超速/急刹提醒', d:'驾驶行为提醒。', u:['超速/急刹提示','驾驶报告'], b:'滴滴安全驾驶提醒。', p:'P1', s:'gap', c:false, a:'需新增', note:'无。'},
+  {n:'司机紧急求助', d:'一键报警/紧急联系人。', u:['SOS 按钮+位置推送'], b:'滴滴司机安全求助。', p:'P1', s:'gap', c:false, a:'需新增', note:'无。'}
+ ]},
+ {name:'热力与接单指引', icon:'🔥', items:[
+  {n:'热力图', d:'需求热区指引前往接单。', u:['地图热力层+热区标签'], b:'滴滴车主热力图。', p:'P1', s:'gap', c:false, a:'需新增需求聚合', note:'无热力图。'},
+  {n:'机场/枢纽排队', d:'机场蓄车池排队。', u:['排队位次+预计接单'], b:'滴滴机场排队。', p:'P2', s:'gap', c:false, a:'需新增', note:'无。'},
+  {n:'接单指引', d:'智能推荐接单区域/时段。', u:['指引卡片+建议'], b:'滴滴接单指引。', p:'P2', s:'gap', c:false, a:'需新增', note:'无。'}
+ ]},
+ {name:'个人中心与设置', icon:'👤', items:[
+  {n:'个人中心', d:'司机资料/设置聚合。', u:['我的页+资料/证件/钱包入口'], b:'滴滴车主「我的」。', p:'P1', s:'partial', c:false, a:'已有', note:'当前仅身份 chip，无聚合个人中心。'},
+  {n:'导航/播报设置', d:'导航偏好/播报/避让设置。', u:['设置面板（播报/避让/路线偏好）'], b:'滴滴导航设置。', p:'P1', s:'gap', c:false, a:'需新增', note:'无。'}
+ ]},
+ {name:'消息与培训', icon:'📚', items:[
+  {n:'消息中心', d:'系统/奖励/合规消息聚合。', u:['消息分类+未读'], b:'滴滴车主消息。', p:'P1', s:'partial', c:false, a:'需新增', note:'当前为实时事件日志，无聚合消息。'},
+  {n:'安全培训与考试', d:'安全课程/考试。', u:['课程列表+考试+证书'], b:'滴滴安全培训。', p:'P2', s:'gap', c:false, a:'需新增', note:'无。'}
+ ]}
+]},
+admin:{label:'管理端', icon:'🛠️', accent:'var(--indigo)', soft:'var(--indigo-soft)', sub:'补齐运营 / 风控 / 双账本监控体验', modules:[
+ {name:'运营仪表盘', icon:'📊', items:[
+  {n:'运营仪表盘', d:'保留 GMV/接单率/状态分布/健康，升级趋势图与同比。', u:['KPI 卡+趋势折线','订单状态环图','服务健康灯'], b:'滴滴运营看板。', p:'P0', s:'have', c:true, a:'/api/admin/overview（已有）', note:'已有今日/累计 GMV、接单率、平均接单时长、状态分布、健康。'},
+  {n:'趋势与对比', d:'订单/GMV/接单率时间趋势、环比同比。', u:['多指标折线+时间范围','环比同比标注'], b:'滴滴趋势分析。', p:'P1', s:'gap', c:false, a:'需新增聚合', note:'当前仅快照数字，无时间趋势。'},
+  {n:'实时运营大屏', d:'实时订单/在线司机/热区地图大屏。', u:['全屏地图+实时数字翻牌','在线司机分布'], b:'滴滴实时监控大屏。', p:'P1', s:'gap', c:false, a:'需新增', note:'无实时大屏。'}
+ ]},
+ {name:'订单管理', icon:'📋', items:[
+  {n:'订单查询与处置', d:'保留筛选/详情/强制取消/部分退款，增强批量。', u:['订单表+详情抽屉','强制取消/部分退款（按比例追回）','处置原因留痕'], b:'滴滴订单管理。', p:'P0', s:'have', c:true, a:'/api/admin/orders/*（已有）', note:'已有筛选+详情+强制取消+部分退款弹层。'},
+  {n:'订单轨迹回放', d:'详情页轨迹回放与状态时间线。', u:['地图轨迹回放','状态时间轴'], b:'滴滴订单轨迹。', p:'P1', s:'partial', c:false, a:'/api/locations/track（已有）', note:'已有轨迹数据，管理详情可加回放。'},
+  {n:'批量处置', d:'批量取消/退款/导出。', u:['多选+批量操作栏'], b:'滴滴批量操作。', p:'P2', s:'gap', c:false, a:'需新增', note:'无批量。'}
+ ]},
+ {name:'资金与对账', icon:'💹', items:[
+  {n:'资金流水', d:'保留筛选/分页/守恒校验/CSV。', u:['流水表+守恒徽章','CSV 导出','流水详情三件套'], b:'滴滴资金流水。', p:'P0', s:'have', c:true, a:'/api/admin/ledger（已有）', note:'已有用户/订单/类型/日期筛选+守恒校验+CSV+详情抽屉。'},
+  {n:'钱包核对', d:'保留账面守恒核对，升级差异定位。', u:['钱包表+差额高亮','一键定位差异流水'], b:'滴滴对账。', p:'P0', s:'have', c:true, a:'/api/admin/audit（已有）', note:'已有余额 vs 流水求和差额核对。'},
+  {n:'对账报表', d:'日对账单/差异报表/渠道对账。', u:['对账日历+差异列表','渠道对账（payment-pro）'], b:'滴滴对账中心。', p:'P1', s:'gap', c:false, a:'需新增对账', note:'无周期性对账报表。'}
+ ]},
+ {name:'双账本镜像监控', icon:'🔁', items:[
+  {n:'镜像投递监控', d:'后端 /api/admin/mirror* 已就绪但管理页未暴露，新增镜像监控页。', u:['镜像投递统计卡（pending/sent/dead）','DEAD 列表','重放/关闭操作'], b:'滴滴双账本对账监控。', p:'P0', s:'partial', c:true, a:'/api/admin/mirror|mirror/dead|replay|close（已有）', note:'AdminController 已有 mirror 全套 API，admin.html 尚无对应页签——明确缺口。'},
+  {n:'镜像 DEAD 处置', d:'DEAD 重放与线下销账关闭。', u:['DEAD 列表+重放','关闭需填原因','处置留痕'], b:'滴滴异常处置。', p:'P1', s:'partial', c:false, a:'已有 API', note:'API 已就绪，UI 待建。'}
+ ]},
+ {name:'用户与司机管理', icon:'👥', items:[
+  {n:'乘客管理', d:'乘客列表/详情/封禁/钱包查看（当前仅播种）。', u:['用户表+详情','状态操作+钱包跳转'], b:'滴滴用户管理。', p:'P0', s:'gap', c:true, a:'/api/passengers（已有，需扩展管理）', note:'当前管理端无乘客管理页，仅 seed 播种。'},
+  {n:'司机管理', d:'司机列表/审核/封禁/服务分。', u:['司机表+审核队列','服务分/状态操作'], b:'滴滴司机管理。', p:'P0', s:'gap', c:true, a:'/api/drivers（已有，需扩展）', note:'无司机管理页。'},
+  {n:'司机准入审核', d:'证件/车辆审核工作流。', u:['审核队列+证件预览','通过/驳回+原因'], b:'滴滴准入审核。', p:'P0', s:'gap', c:true, a:'需新增审核', note:'无准入审核。'},
+  {n:'演示数据播种', d:'保留幂等只增不删播种。', u:['播种按钮+结果','幂等说明'], b:'滴滴无（演示特性）。', p:'P2', s:'have', c:false, a:'/api/admin/seed（已有）', note:'已有按手机号去重+充值幂等播种。'}
+ ]},
+ {name:'计价与规则配置', icon:'⚙️', items:[
+  {n:'计价规则配置', d:'分车型起步/里程/时长/远途/动态规则可视化配置。', u:['规则表单+预览试算','生效版本管理'], b:'滴滴计价配置。', p:'P0', s:'gap', c:true, a:'/api/pricing/rules（读已有，需新增写）', note:'当前计价规则硬编码，无配置界面。'},
+  {n:'动态调价策略', d:'高峰溢价/区域调价配置。', u:['策略表+时段/区域'], b:'滴滴调价策略。', p:'P1', s:'gap', c:false, a:'需新增', note:'无。'},
+  {n:'取消费规则', d:'免费窗口/取消费金额配置。', u:['规则表单（窗口/金额/归属）'], b:'滴滴取消费配置。', p:'P1', s:'partial', c:false, a:'需新增配置', note:'已有 120s/¥3 规则但硬编码。'}
+ ]},
+ {name:'派单策略配置', icon:'🎯', items:[
+  {n:'派单策略', d:'抢单/指派模式、半径、超时、优先级配置。', u:['策略面板+参数滑块','派单模拟'], b:'滴滴派单策略。', p:'P0', s:'gap', c:true, a:'需新增（dispatch 域）', note:'当前派单模式/半径硬编码，无配置。'},
+  {n:'派单监控', d:'派单成功率/超时/改派监控。', u:['派单漏斗+指标'], b:'滴滴派单监控。', p:'P1', s:'partial', c:false, a:'需新增聚合', note:'已有接单率/平均接单时长，缺派单漏斗。'}
+ ]},
+ {name:'营销与优惠券', icon:'🎟️', items:[
+  {n:'优惠券管理', d:'券模板/发放/核销统计。', u:['券列表+创建+发放','核销统计'], b:'滴滴券管理。', p:'P1', s:'gap', c:false, a:'需新增', note:'无券体系。'},
+  {n:'活动管理', d:'活动/拉新配置。', u:['活动列表+配置'], b:'滴滴活动管理。', p:'P2', s:'gap', c:false, a:'需新增', note:'无。'}
+ ]},
+ {name:'安全与风控', icon:'🛡️', items:[
+  {n:'异常订单风控', d:'刷单/异常轨迹/异常资金识别与告警。', u:['风险订单列表+规则','告警与处置'], b:'滴滴风控。', p:'P0', s:'gap', c:true, a:'需新增风控', note:'无风控识别。'},
+  {n:'安全事件监控', d:'SOS/偏航/录音事件处置。', u:['安全事件台+处置'], b:'滴滴安全监控。', p:'P1', s:'gap', c:false, a:'需新增', note:'无。'},
+  {n:'告警中心', d:'资金/派单/服务异常告警与通知。', u:['告警列表+阈值配置','通知渠道'], b:'滴滴告警中心。', p:'P1', s:'gap', c:false, a:'需新增', note:'无告警。'}
+ ]},
+ {name:'客服与工单', icon:'🎧', items:[
+  {n:'客服工单', d:'投诉/费用异议/失物工单流转。', u:['工单队列+详情','处理+回访+关闭'], b:'滴滴客服工单。', p:'P0', s:'gap', c:true, a:'需新增工单', note:'无工单系统。'},
+  {n:'退款审批流', d:'退款申请→审批→执行→通知。', u:['审批流+金额校验','执行结果通知'], b:'滴滴退款审批。', p:'P1', s:'partial', c:false, a:'/api/admin/orders/{id}/refund（已有）', note:'已有管理端直接退款，缺审批流。'}
+ ]},
+ {name:'系统与一致性', icon:'🩺', items:[
+  {n:'outbox 一致性监控', d:'保留 pending/sent/dead/重放。', u:['统计卡+DEAD 重放','最大重试/最老积压'], b:'滴滴最终一致性监控。', p:'P0', s:'have', c:true, a:'/api/admin/outbox*（已有）', note:'已有 outbox 统计+DEAD 重放+5s 自动刷新。'},
+  {n:'推送与连接监控', d:'保留 WS 连接/推送审计。', u:['连接表+事件审计'], b:'滴滴推送监控。', p:'P1', s:'have', c:false, a:'/api/admin/push/*（已有）', note:'已有 WS 连接+推送事件审计 100 条。'},
+  {n:'系统日志', d:'保留白名单尾部+traceId 全链路检索。', u:['日志查看器（10 文件）','traceId 跨服务串联','自动刷新'], b:'滴滴日志检索。', p:'P0', s:'have', c:true, a:'/api/admin/logs（已有）', note:'已有白名单尾部+traceId 全链路检索+5s 自动。'},
+  {n:'服务健康', d:'保留 8 域健康，升级拓扑图。', u:['服务拓扑+健康灯','依赖关系'], b:'滴滴服务监控。', p:'P1', s:'have', c:false, a:'/actuator/health（已有）', note:'已有 8 域健康检查。'}
+ ]},
+ {name:'权限与审计', icon:'🔐', items:[
+  {n:'RBAC 权限', d:'多角色/细粒度权限替代单一 X-Admin-Token。', u:['角色管理+权限矩阵','登录与鉴权'], b:'滴滴权限管理。', p:'P0', s:'partial', c:true, a:'需新增 RBAC', note:'当前仅单一 X-Admin-Token（默认 ride-admin），无角色。'},
+  {n:'操作审计', d:'管理操作审计留痕可查。', u:['审计日志表+筛选','操作人/时间/对象'], b:'滴滴操作审计。', p:'P1', s:'partial', c:false, a:'需新增审计', note:'当前仅 log.warn 记录，无审计查询界面。'}
+ ]},
+ {name:'数据与报表', icon:'📈', items:[
+  {n:'运营报表', d:'多维报表/导出/订阅。', u:['报表中心+导出','定时订阅'], b:'滴滴报表。', p:'P1', s:'partial', c:false, a:'需新增', note:'当前仅流水 CSV 导出。'},
+  {n:'数据导出', d:'订单/资金/用户导出。', u:['导出任务+下载'], b:'滴滴数据导出。', p:'P2', s:'partial', c:false, a:'部分已有', note:'已有流水 CSV，订单/用户导出待补。'}
+ ]}
+]}
+};
+
+/* ============================ 状态 ============================ */
+const state = {surface:'passenger', q:'', prio:new Set(), status:new Set(), core:false, sort:'module', compact:false};
+const SURFACES = ['passenger','driver','admin'];
+let flat = [];        // 当前 surface 扁平化（含 module）
+let filtered = [];    // 过滤+排序后
+let drawerIdx = -1;
+
+const $ = s=>document.querySelector(s);
+const el = (t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+const esc = s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+/* ============================ 初始化控件 ============================ */
+function buildTabs(){
+  const t=$('#tabs'); t.innerHTML='';
+  SURFACES.forEach(k=>{
+    const s=DATA[k];
+    const b=el('button','tab'+(k===state.surface?' on':''),`<span class="dot"></span>${s.icon} ${s.label}`);
+    b.onclick=()=>{state.surface=k;applyAccent();buildTabs();buildCoverage();render();};
+    t.appendChild(b);
+  });
+}
+function applyAccent(){
+  const s=DATA[state.surface];
+  document.documentElement.style.setProperty('--accent',s.accent);
+  document.documentElement.style.setProperty('--accent-soft',s.soft);
+}
+function buildChips(){
+  const pc=$('#prioChips'); pc.innerHTML='';
+  ['P0','P1','P2'].forEach(p=>{
+    const c=el('button','chip'+(state.prio.has(p)?' on':''),`<span class="sw sw-${p.toLowerCase()}"></span>${p}`);
+    c.onclick=()=>{state.prio.has(p)?state.prio.delete(p):state.prio.add(p);buildChips();render();};
+    pc.appendChild(c);
+  });
+  const sc=$('#statusChips'); sc.innerHTML='';
+  ['have','partial','gap'].forEach(s=>{
+    const c=el('button','chip'+(state.status.has(s)?' on':''),`<span class="sw sw-${s}"></span>${S[s]}`);
+    c.onclick=()=>{state.status.has(s)?state.status.delete(s):state.status.add(s);buildChips();render();};
+    sc.appendChild(c);
+  });
+}
+
+/* ============================ 统计 ============================ */
+function counts(items){
+  const c={have:0,partial:0,gap:0,core:0,total:items.length};
+  items.forEach(i=>{c[i.s]++;if(i.c)c.core++;});
+  return c;
+}
+function allItems(k){const out=[];DATA[k].modules.forEach(m=>m.items.forEach(i=>out.push(i)));return out;}
+function buildHero(){
+  const all=[...allItems('passenger'),...allItems('driver'),...allItems('admin')];
+  const c=counts(all);
+  const defs=[['total','功能点',c.total],['have','已有',c.have],['partial','部分',c.partial],['gap','缺失',c.gap],['core','核心升级 ★',c.core]];
+  const box=$('#heroStats'); box.innerHTML='';
+  defs.forEach(([cls,lbl,n])=>{
+    const d=el('div','hstat '+cls,`<div class="num" data-n="${n}">0</div><div class="lbl">${lbl}</div>`);
+    box.appendChild(d);
+  });
+  box.querySelectorAll('.num').forEach(countUp);
+}
+function countUp(node){
+  const target=+node.dataset.n; const dur=900; const t0=performance.now();
+  function step(t){const p=Math.min(1,(t-t0)/dur);node.textContent=Math.round(target*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(step);}
+  requestAnimationFrame(step);
+}
+function buildCoverage(){
+  const box=$('#coverage'); box.innerHTML='';
+  SURFACES.forEach(k=>{
+    const s=DATA[k]; const c=counts(allItems(k));
+    const card=el('div','cov'+(k===state.surface?' active':''));
+    card.style.setProperty('--ca',s.accent); card.style.setProperty('--casoft',s.soft);
+    const pct=n=>c.total?(n/c.total*100):0;
+    card.innerHTML=`
+      <div class="cov-top"><span class="cov-ico">${s.icon}</span>
+        <div><div class="cov-name">${s.label}</div><div class="cov-sub">${s.modules.length} 个模块</div></div>
+        <span class="cov-total">${c.total}</span></div>
+      <div class="bar"><i class="b-have" style="width:${pct(c.have)}%"></i><i class="b-partial" style="width:${pct(c.partial)}%"></i><i class="b-gap" style="width:${pct(c.gap)}%"></i></div>
+      <div class="cov-legend">
+        <span><i style="background:var(--have)"></i>已有 ${c.have}</span>
+        <span><i style="background:var(--partial)"></i>部分 ${c.partial}</span>
+        <span><i style="background:var(--gap)"></i>缺失 ${c.gap}</span></div>
+      <span class="cov-core">★ 核心升级 ${c.core} 项</span>`;
+    card.onclick=()=>{state.surface=k;applyAccent();buildTabs();buildCoverage();render();window.scrollTo({top:$('.controls').offsetTop-70,behavior:'smooth'});};
+    box.appendChild(card);
+  });
+}
+
+/* ============================ 渲染 ============================ */
+function flatten(){
+  flat=[]; const s=DATA[state.surface];
+  s.modules.forEach((m,mi)=>m.items.forEach((i,ii)=>flat.push({...i,mod:m.name,modIco:m.icon,mi,ii})));
+}
+function match(i){
+  if(state.core&&!i.c)return false;
+  if(state.prio.size&&!state.prio.has(i.p))return false;
+  if(state.status.size&&!state.status.has(i.s))return false;
+  if(state.q){
+    const hay=(i.n+i.d+i.u.join('')+i.b+i.a+i.mod+(i.note||'')).toLowerCase();
+    if(!hay.includes(state.q.toLowerCase()))return false;
+  }
+  return true;
+}
+function sortItems(arr){
+  const po={P0:0,P1:1,P2:2}, so={gap:0,partial:1,have:2};
+  const a=[...arr];
+  if(state.sort==='priority')a.sort((x,y)=>po[x.p]-po[y.p]||x.mi-y.mi||x.ii-y.ii);
+  else if(state.sort==='gap')a.sort((x,y)=>so[x.s]-so[y.s]||po[x.p]-po[y.p]||x.mi-y.mi);
+  else a.sort((x,y)=>x.mi-y.mi||x.ii-y.ii);
+  return a;
+}
+function statusTag(s){return `<span class="status-tag st-${s}"><i></i>${S[s]}</span>`;}
+function cardHTML(i,showMod){
+  return `<div class="card-top">
+      <span class="card-name">${esc(i.n)}</span>
+      ${i.c?'<span class="core-star" title="核心升级">★</span>':''}
+      <span class="pill ${i.p.toLowerCase()}">${i.p}</span>
+    </div>
+    ${showMod?`<div class="mod-tag">${i.modIco} ${esc(i.mod)}</div>`:''}
+    <div class="desc">${esc(i.d)}</div>
+    <div class="card-foot">${statusTag(i.s)}<span class="api">${esc(i.a)}</span><span class="more">详情 ›</span></div>`;
+}
+function makeCard(i,idx,io,showMod){
+  const card=el('article','card');
+  card.style.setProperty('--sc', i.s==='have'?'var(--have)':i.s==='partial'?'var(--partial)':'var(--gap)');
+  card.innerHTML=cardHTML(i,showMod);
+  card.style.transitionDelay=(Math.min(idx,8)*35)+'ms';
+  card.onclick=()=>openDrawer(filtered.indexOf(i));
+  io.observe(card);
+  return card;
+}
+function render(){
+  flatten();
+  filtered=sortItems(flat.filter(match));
+  const content=$('#content'); content.innerHTML='';
+  const s=DATA[state.surface];
+  $('#resultCount').innerHTML=`命中 <b>${filtered.length}</b> / ${flat.length} 项`;
+
+  const sortLbl={module:'按旅程模块',priority:'按优先级 P0→P2',gap:'按缺口 待补→已有'}[state.sort];
+  const head=el('div','surface-head',`<h2>${s.icon} ${s.label}</h2><span class="badge">${filtered.length} 项</span><p>${s.sub} · ${sortLbl}</p>`);
+  content.appendChild(head);
+
+  if(!filtered.length){
+    content.appendChild(el('div','empty',`<div class="big">🔍</div><h3>没有匹配的功能点</h3><p>试试放宽筛选条件或清空搜索词</p>`));
+    return;
+  }
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.08});
+  let idx=0;
+  if(state.sort!=='module'){
+    // 优先级/缺口排序：扁平有序网格，保证全局顺序不被模块分组打散
+    const sec=el('section','module');
+    const grid=el('div','grid');
+    filtered.forEach(i=>{grid.appendChild(makeCard(i,idx++,io,true));});
+    sec.appendChild(grid); content.appendChild(sec);
+    return;
+  }
+  // 模块排序：按旅程模块分组
+  const groups=new Map();
+  filtered.forEach(i=>{if(!groups.has(i.mod))groups.set(i.mod,{ico:i.modIco,items:[]});groups.get(i.mod).items.push(i);});
+  groups.forEach((g,mod)=>{
+    const sec=el('section','module');
+    const c=counts(g.items);
+    const mini=`<span class="mod-mini"><i style="background:var(--have);opacity:${c.have?1:.2}"></i><i style="background:var(--partial);opacity:${c.partial?1:.2}"></i><i style="background:var(--gap);opacity:${c.gap?1:.2}"></i></span>`;
+    sec.appendChild(el('div','mod-head',`<span class="mod-ico">${g.ico}</span><span class="mod-name">${esc(mod)}</span><span class="mod-count">${g.items.length}</span>${mini}`));
+    const grid=el('div','grid');
+    g.items.forEach(i=>{grid.appendChild(makeCard(i,idx++,io,false));});
+    sec.appendChild(grid); content.appendChild(sec);
+  });
+}
+
+/* ============================ 抽屉 ============================ */
+function openDrawer(idx){
+  drawerIdx=idx; const i=filtered[idx]; if(!i)return;
+  const s=DATA[state.surface];
+  $('#drMod').innerHTML=`${s.icon} ${s.label} · ${i.modIco} ${esc(i.mod)}`;
+  $('#drTitle').textContent=i.n;
+  $('#drTags').innerHTML=`<span class="pill ${i.p.toLowerCase()}">${P[i.p]}</span>${statusTag(i.s)}${i.c?'<span class="cov-core">★ 核心升级</span>':''}`;
+  const apiParts=i.a.split(/[+，,]/).map(x=>x.trim()).filter(Boolean);
+  const apiHTML=apiParts.map(x=>`<code class="${/需新增|需扩展/.test(x)?'new':''}">${esc(x)}</code>`).join('');
+  $('#drBody').innerHTML=`
+    <div class="dr-sec"><h4>功能描述<span class="ln"></span></h4><p>${esc(i.d)}</p></div>
+    <div class="dr-sec"><h4>UI 设计要点<span class="ln"></span></h4><ul class="dr-ui">${i.u.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
+    <div class="dr-sec"><h4>滴滴对标<span class="ln"></span></h4><div class="dr-didi">${esc(i.b)}</div></div>
+    <div class="dr-sec"><h4>现状说明<span class="ln"></span></h4><div class="dr-note">${esc(i.note||'')}</div></div>
+    <div class="dr-sec"><h4>涉及接口<span class="ln"></span></h4><div class="dr-api">${apiHTML}</div></div>`;
+  $('#drPrev').disabled=idx<=0; $('#drNext').disabled=idx>=filtered.length-1;
+  $('#drawer').classList.add('open'); $('#scrim').classList.add('open');
+  $('#drawer').setAttribute('aria-hidden','false');
+  $('#drBody').scrollTop=0;
+}
+function closeDrawer(){$('#drawer').classList.remove('open');$('#scrim').classList.remove('open');$('#drawer').setAttribute('aria-hidden','true');drawerIdx=-1;}
+$('#drClose').onclick=closeDrawer; $('#scrim').onclick=closeDrawer;
+$('#drPrev').onclick=()=>{if(drawerIdx>0)openDrawer(drawerIdx-1);};
+$('#drNext').onclick=()=>{if(drawerIdx<filtered.length-1)openDrawer(drawerIdx+1);};
+document.addEventListener('keydown',e=>{
+  if(!$('#drawer').classList.contains('open'))return;
+  if(e.key==='Escape')closeDrawer();
+  if(e.key==='ArrowLeft'&&drawerIdx>0)openDrawer(drawerIdx-1);
+  if(e.key==='ArrowRight'&&drawerIdx<filtered.length-1)openDrawer(drawerIdx+1);
+});
+
+/* ============================ 控件事件 ============================ */
+let searchTimer;
+$('#search').addEventListener('input',e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.q=e.target.value.trim();render();},160);});
+$('#coreOnly').addEventListener('change',e=>{state.core=e.target.checked;render();});
+$('#compact').addEventListener('change',e=>{state.compact=e.target.checked;document.body.classList.toggle('compact',state.compact);});
+$('#sort').addEventListener('change',e=>{state.sort=e.target.value;render();});
+$('#reset').onclick=()=>{
+  state.q='';state.prio.clear();state.status.clear();state.core=false;state.sort='module';
+  $('#search').value='';$('#coreOnly').checked=false;$('#sort').value='module';
+  buildChips();render();toast('已重置筛选');
+};
+$('#export').onclick=()=>{
+  const rows=[['端','模块','功能','优先级','现状','核心升级','功能描述','UI要点','滴滴对标','涉及接口','现状说明']];
+  filtered.forEach(i=>rows.push([DATA[state.surface].label,i.mod,i.n,i.p,S[i.s],i.c?'是':'否',i.d,i.u.join(' / '),i.b,i.a,i.note||'']));
+  const csv='﻿'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`ride-pro升级清单_${DATA[state.surface].label}_${filtered.length}项.csv`;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast(`已导出 ${filtered.length} 项 CSV`);
+};
+let toastTimer;
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2200);}
+
+/* ============================ 启动 ============================ */
+applyAccent();buildTabs();buildChips();buildHero();buildCoverage();render();
+/* 路线小车动画 */
+(function(){
+  const path=document.getElementById('routePath'),car=document.getElementById('carMarker');
+  if(!path||!car||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  const len=path.getTotalLength();let t0=performance.now();
+  function loop(t){const p=((t-t0)/6000)%1;const pt=path.getPointAtLength(p*len);car.setAttribute('transform',`translate(${pt.x},${pt.y})`);requestAnimationFrame(loop);}
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

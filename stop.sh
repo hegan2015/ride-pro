@@ -2,7 +2,7 @@
 # 按依赖顺序停止：gateway → 业务域 → registry 最后。
 # registry 必须最后停：业务进程停机时若 ZK 已失联，Dubbo shutdown hook 会阻塞在注册中心销毁上。
 cd "$(dirname "$0")"
-ORDER="gateway dispatch order payment push location pricing driver passenger registry"
+ORDER="gateway support dispatch order payment push location pricing driver passenger registry"
 for name in $ORDER; do
   f="run/$name.pid"
   [ -f "$f" ] || continue

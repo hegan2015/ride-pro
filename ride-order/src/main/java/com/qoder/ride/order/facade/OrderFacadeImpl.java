@@ -53,6 +53,11 @@ public class OrderFacadeImpl implements OrderFacade {
     }
 
     @Override
+    public Result<OrderDTO> pay(String orderId, String channel) {
+        return FacadeSupport.execute(() -> orderService.pay(orderId, channel));
+    }
+
+    @Override
     public Result<OrderDTO> onPaySucceeded(String orderId) {
         return FacadeSupport.execute(() -> orderService.onPaySucceeded(orderId));
     }
@@ -83,6 +88,16 @@ public class OrderFacadeImpl implements OrderFacade {
     @Override
     public Result<List<RatingDTO>> ratings(String orderId) {
         return FacadeSupport.execute(() -> orderService.ratings(orderId));
+    }
+
+    @Override
+    public Result<List<RatingDTO>> driverRatings(String driverId) {
+        return FacadeSupport.execute(() -> orderService.driverRatings(driverId));
+    }
+
+    @Override
+    public Result<OrderDTO> modifyDest(String orderId, String destName, Double destLat, Double destLng) {
+        return FacadeSupport.execute(() -> orderService.modifyDest(orderId, destName, destLat, destLng));
     }
 
     @Override

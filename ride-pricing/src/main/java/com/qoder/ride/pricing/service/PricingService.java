@@ -28,9 +28,42 @@ public class PricingService {
 
     private final PricingProperties properties;
 
+    @org.apache.dubbo.config.annotation.DubboReference(check = false)
+    private com.qoder.ride.facade.support.SupportFacade supportFacade;
+
+    /** 运营配置覆盖（ride-support）；不可达/未配置时回落本地费率，保证计价不中断。 */
+    private String cfg(String key) {
+        try {
+            if (supportFacade == null) return null;
+            String v = supportFacade.allConfig().orThrow().get(key);
+            return v == null || v.isBlank() ? null : v.trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private PricingProperties.ServiceRate overrideRate(String serviceType, PricingProperties.ServiceRate base) {
+        String p = "pricing." + serviceType + ".";
+        String baseFee = cfg(p + "baseFee"), baseKm = cfg(p + "baseKm"), perKm = cfg(p + "perKmFee"), perMin = cfg(p + "perMinFee"), minFare = cfg(p + "minFare");
+        if (baseFee == null && baseKm == null && perKm == null && perMin == null && minFare == null) return base;
+        PricingProperties.ServiceRate r = new PricingProperties.ServiceRate();
+        r.setLabel(base.getLabel());
+        r.setBaseFee(baseFee != null ? Long.parseLong(baseFee) : base.getBaseFee());
+        r.setBaseKm(baseKm != null ? Double.parseDouble(baseKm) : base.getBaseKm());
+        r.setPerKmFee(perKm != null ? Long.parseLong(perKm) : base.getPerKmFee());
+        r.setPerMinFee(perMin != null ? Long.parseLong(perMin) : base.getPerMinFee());
+        r.setMinFare(minFare != null ? Long.parseLong(minFare) : base.getMinFare());
+        return r;
+    }
+
+    private boolean surgeEnabled() {
+        String v = cfg("pricing.surgeEnabled");
+        return v == null || "true".equalsIgnoreCase(v);
+    }
+
     public FareDTO quote(FareRequest request) {
         String serviceType = normalizeService(request.getServiceType());
-        PricingProperties.ServiceRate rate = properties.getServices().get(serviceType);
+        PricingProperties.ServiceRate rate = overrideRate(serviceType, properties.getServices().get(serviceType));
 
         double distanceKm;
         long durationMin;
@@ -46,7 +79,7 @@ public class PricingService {
             durationMin = GeoUtil.estimateMinutes(distanceKm);
         }
 
-        double peakRate = currentPeakRate();
+        double peakRate = surgeEnabled() ? currentPeakRate() : 1.0;
         double billableKm = Math.max(0, distanceKm - rate.getBaseKm());
         long distanceFee = Math.round(billableKm * rate.getPerKmFee() * peakRate);
         long timeFee = Math.round(durationMin * rate.getPerMinFee() * peakRate);

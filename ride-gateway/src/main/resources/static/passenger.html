@@ -1,616 +1,929 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>乘客端 · ride-pro</title>
-  <link rel="stylesheet" href="common.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>乘客端 · ride-pro</title>
+<style>
+:root{
+  --bg:#f5f6fa; --card:#ffffff; --text:#1f2430; --muted:#8a94a6; --line:#e6e9f0;
+  --green:#00b578; --red:#fa5151; --amber:#ff8f1f; --blue:#10aeff; --orange:#ff6a00; --orange-d:#e85d04;
+  --soft:#fff4ea; --shadow:0 2px 12px rgba(31,36,48,.08); --r:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.55}
+body.elder{font-size:17px}
+body.hc{--bg:#ffffff;--card:#ffffff;--text:#000000;--muted:#333333;--line:#000000;--orange:#c43e00;--orange-d:#a33400}
+body.hc .card,body.hc .sheet,body.hc .modal{border:2px solid #000}
+body.elder .hide-elder{display:none!important}
+#app{max-width:520px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;box-shadow:0 0 40px rgba(0,0,0,.08);display:flex;flex-direction:column}
+button{font-family:inherit;font-size:14px;border:0;border-radius:10px;padding:9px 14px;background:var(--orange);color:#fff;font-weight:600;cursor:pointer}
+button.ghost{background:#fff;color:var(--text);border:1px solid var(--line)}
+button.green{background:var(--green)} button.red{background:var(--red)} button.amber{background:var(--amber)}
+button.block{width:100%} button:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{font-family:inherit;font-size:14px;width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:#fff;color:var(--text);outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--orange)}
+label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px;font-weight:600}
+.muted{color:var(--muted)} .small{font-size:12px}
+.spread{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.row{display:flex;gap:10px}.row>div{flex:1}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:14px}
+.sec{font-size:13px;font-weight:700;margin:14px 0 8px;color:var(--text)}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;background:#eef1f6;color:var(--muted)}
+.badge.ok{background:#e6f9f1;color:var(--green)} .badge.err{background:#feecec;color:var(--red)}
+.badge.warn{background:#fff4e6;color:var(--amber)} .badge.info{background:#e8f7ff;color:var(--blue)}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.kv:last-child{border-bottom:0}.kv .k{color:var(--muted)}.kv .v{text-align:right;font-weight:600}
+/* top */
+.top{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--orange),var(--amber));color:#fff;display:grid;place-items:center;font-weight:700;flex:none}
+.top .name{font-weight:700}
+.iconbtn{width:34px;height:34px;border-radius:50%;background:#fff;border:1px solid var(--line);color:var(--text);display:grid;place-items:center;font-size:16px;padding:0;position:relative;flex:none}
+.iconbtn .dot{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:var(--red);display:none}
+.iconbtn.has .dot{display:block}
+#wsState{font-size:10px}
+/* panes */
+.pane{display:none;flex:1;overflow-y:auto;padding:12px 12px 84px}
+.pane.active{display:block}
+#pane-home{padding:0;position:relative;overflow:hidden}
+#map{width:100%;height:100%;position:absolute;inset:0;background:linear-gradient(160deg,#eef4ee,#f5f6fa)}
+.home-top{position:absolute;top:12px;left:12px;right:12px;z-index:5}
+.searchbar{background:#fff;border-radius:12px;box-shadow:var(--shadow);padding:11px 14px;display:flex;align-items:center;gap:9px;font-weight:600;color:var(--muted);cursor:pointer}
+.searchbar .mag{color:var(--orange)}
+.quick{display:flex;gap:8px;margin-top:9px}
+.quick button{background:#fff;color:var(--text);border:1px solid var(--line);border-radius:999px;font-size:12px;padding:6px 13px;box-shadow:var(--shadow)}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:6;background:#fff;border-radius:20px 20px 0 0;box-shadow:0 -6px 24px rgba(31,36,48,.14);padding:16px 16px calc(16px + 62px);max-height:72%;overflow-y:auto}
+.sheet .grip{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 12px}
+.odrow{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px dashed var(--line);cursor:pointer}
+.odrow .pin{width:9px;height:9px;border-radius:50%;flex:none}
+.odrow .txt{flex:1;font-weight:600}
+.odrow .edit{color:var(--muted);font-size:12px}
+.svc{display:flex;gap:8px;overflow-x:auto;padding:10px 0}
+.svc button{flex:none;background:#f4f6fa;color:var(--text);border:1.5px solid transparent;border-radius:12px;padding:8px 13px;text-align:left}
+.svc button.on{background:var(--soft);border-color:var(--orange);color:var(--orange-d)}
+.svc .p{display:block;font-size:12px;font-weight:700}
+.couponrow{display:flex;justify-content:space-between;align-items:center;background:var(--soft);border-radius:10px;padding:8px 12px;margin:8px 0;color:var(--orange-d);font-weight:600;cursor:pointer;font-size:13px}
+.fareline{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0}
+.fareline .big{font-size:24px;font-weight:800;color:var(--orange-d)}
+.callbtn{width:100%;padding:14px;font-size:16px;border-radius:12px;background:linear-gradient(135deg,var(--orange),var(--amber));box-shadow:0 6px 16px rgba(255,106,0,.3)}
+/* order card in sheet */
+.drivercard{display:flex;gap:11px;align-items:center;background:#f8f9fc;border-radius:12px;padding:11px}
+.drivercard .avatar{width:44px;height:44px;font-size:18px}
+.drivercard . plates{font-weight:800}
+.eta{background:#e8f7ff;color:var(--blue);border-radius:999px;font-size:12px;font-weight:700;padding:3px 10px;display:inline-block;margin-top:6px}
+.timeline{display:flex;gap:4px;margin:10px 0;flex-wrap:wrap}
+.timeline .step{font-size:11px;color:var(--muted);background:#f4f6fa;border-radius:999px;padding:3px 9px}
+.timeline .step.done{color:var(--green);background:#e6f9f1}
+.timeline .step.active{color:#fff;background:var(--orange)}
+.primary-big{width:100%;padding:13px;font-size:15px;border-radius:12px}
+.actrow{display:flex;gap:8px;margin-top:9px}
+.actrow button{flex:1;font-size:12.5px;padding:8px 4px}
+/* safety fab */
+.fab{position:absolute;right:12px;top:150px;z-index:7;width:46px;height:46px;border-radius:50%;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);font-size:20px;display:grid;place-items:center;padding:0}
+/* bottom nav */
+.bottomnav{position:absolute;bottom:0;left:0;right:0;z-index:30;display:flex;background:#fff;border-top:1px solid var(--line);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
+.bottomnav button{flex:1;background:none;color:var(--muted);font-size:11px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;border-radius:0}
+.bottomnav button .ico{font-size:20px}
+.bottomnav button.active{color:var(--orange-d);font-weight:700}
+/* lists */
+.hist-item{background:#fff;border-radius:12px;box-shadow:var(--shadow);padding:12px;margin-bottom:9px;cursor:pointer}
+.hist-route{font-weight:700}
+.stats{display:flex;gap:9px}.stat{flex:1;background:#fff;border-radius:12px;box-shadow:var(--shadow);padding:10px;text-align:center}
+.stat .n{font-size:19px;font-weight:800}.stat .n.green{color:var(--green)}.stat .n.amber{color:var(--amber)}
+.stat .l{font-size:11px;color:var(--muted)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:10px}.filters>div{flex:1;min-width:110px}
+.pager{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.money{font-size:32px;font-weight:800;color:var(--orange-d)}
+.log{background:#fff;border-radius:12px;padding:10px;max-height:420px;overflow-y:auto}
+.log .item{padding:5px 0;border-bottom:1px dashed var(--line);font-size:12px}
+.log .t{color:var(--muted);margin-right:6px}.log .e{font-weight:700;color:var(--blue)}
+/* modal / sheet-overlay / drawer / toast (common.js) */
+.modal-overlay,.drawer-overlay{position:fixed;inset:0;background:rgba(31,36,48,.45);z-index:90;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:520px;max-height:86vh;overflow-y:auto;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.modal h3{font-size:16px}
+.modal .btns{justify-content:flex-end}
+.stars{font-size:26px;color:#d9dde5;cursor:pointer}.stars .on{color:var(--amber)}
+.drawer-overlay{align-items:stretch;justify-content:flex-end}
+.drawer{background:#fff;width:100%;max-width:520px;height:100%;overflow-y:auto;padding:16px;box-shadow:-8px 0 30px rgba(0,0,0,.15)}
+.drawer.wide{max-width:520px}
+.drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.drawer-head h3{font-size:16px}
+.drawer-close{background:#f4f6fa;color:var(--text);border:0;width:32px;height:32px;border-radius:50%;padding:0}
+.map.mini{width:100%;height:160px;border-radius:12px;background:#eef4ee}
+.vtl{padding-left:6px}.vtl-item{display:flex;gap:9px;padding:5px 0;position:relative}
+.vtl-dot{width:9px;height:9px;border-radius:50%;background:var(--orange);margin-top:5px;flex:none}
+.vtl-label{font-weight:600;font-size:13px}
+#toastStack{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:120;display:flex;flex-direction:column;gap:8px;align-items:center;width:max-content;max-width:90vw}
+.toast{background:rgba(31,36,48,.92);color:#fff;border-radius:999px;padding:9px 18px;font-size:13px;box-shadow:var(--shadow);transition:.3s}
+.toast.ok{background:var(--green)}.toast.warn{background:var(--amber)}.toast.err{background:var(--red)}
+.toast.out{opacity:0;transform:translateY(-8px)}
+/* sheet content helpers */
+.listitem{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0;border-bottom:1px dashed var(--line)}
+.listitem:last-child{border-bottom:0}
+.tag{font-size:11px;font-weight:700;border-radius:6px;padding:2px 7px;background:#eef1f6;color:var(--muted)}
+.tag.ok{background:#e6f9f1;color:var(--green)}.tag.warn{background:#fff4e6;color:var(--amber)}.tag.err{background:#feecec;color:var(--red)}
+.sos{width:100%;padding:15px;font-size:16px;background:var(--red);border-radius:12px;box-shadow:0 6px 16px rgba(250,81,81,.3)}
+.menu{display:flex;flex-direction:column}
+.menu button{display:flex;justify-content:space-between;align-items:center;background:#fff;color:var(--text);border:0;border-bottom:1px dashed var(--line);border-radius:0;padding:13px 2px;font-size:14px;font-weight:600}
+.menu button .arr{color:var(--muted)}
+.membercard{background:linear-gradient(135deg,#3a3f52,#20242f);color:#fff;border-radius:14px;padding:14px}
+.membercard .lv{font-weight:800;color:var(--amber)}
+.chips{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}
+.chips button{background:#f4f6fa;color:var(--text);border:1.5px solid transparent;border-radius:999px;font-size:12.5px;padding:6px 12px}
+.chips button.on{background:var(--soft);border-color:var(--orange);color:var(--orange-d)}
+.imbox{max-height:260px;overflow-y:auto;background:#f8f9fc;border-radius:12px;padding:10px;margin:10px 0}
+.immsg{margin:6px 0;display:flex}.immsg.me{justify-content:flex-end}
+.immsg span{max-width:75%;border-radius:12px;padding:8px 11px;font-size:13px;background:#fff;box-shadow:var(--shadow)}
+.immsg.me span{background:var(--orange);color:#fff}
+</style>
 </head>
 <body>
+<div id="app">
   <header class="top">
-    <div>
-      <h1>🧑 乘客端</h1>
-      <div class="sub"><a href="index.html">← 门户</a> · <a href="driver.html">司机端</a> · <a href="admin.html">管理端</a></div>
+    <span class="avatar" id="avatar">?</span>
+    <div style="flex:1">
+      <div class="name" id="chipName">选择身份</div>
+      <div class="muted small" id="wsState">未连接</div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <span id="wsState" class="badge">未连接</span>
-      <span class="chip" id="identityChip"><span class="avatar">?</span><span id="chipName">选择身份</span></span>
-    </div>
+    <button class="iconbtn" id="btnBell" title="消息">🔔<span class="dot"></span></button>
+    <button class="iconbtn" id="btnShield" title="安全中心">🛡️</button>
   </header>
 
-  <div class="wrap">
-    <div class="tabs" id="tabs">
-      <button data-tab="home" class="active">🚕 叫车</button>
-      <button data-tab="history">📋 订单记录</button>
-      <button data-tab="wallet">💰 钱包</button>
-      <button data-tab="events">📡 实时事件</button>
-    </div>
-
-    <!-- 叫车 -->
-    <div class="tabpane active" id="pane-home">
-      <div class="grid cols-2">
-        <div class="card">
-          <h2><span class="dot"></span>选择起终点</h2>
-          <canvas class="map big" id="map"></canvas>
-          <div class="btns">
-            <button class="ghost" id="modeOrigin">点选起点</button>
-            <button class="ghost" id="modeDest">点选终点</button>
-            <span class="muted small" id="mapHint" style="align-self:center">点击地图设置起点</span>
-          </div>
-          <div class="row" style="margin-top:12px">
-            <div>
-              <label>起点</label>
-              <select id="originPreset"></select>
-              <input id="originName" placeholder="起点名称" style="margin-top:8px">
-            </div>
-            <div>
-              <label>终点</label>
-              <select id="destPreset"></select>
-              <input id="destName" placeholder="终点名称" style="margin-top:8px">
-            </div>
-          </div>
-          <label>车型</label>
-          <div class="btns" id="serviceBtns" style="margin-top:4px">
-            <button class="ghost" data-svc="EXPRESS">快车</button>
-            <button class="ghost" data-svc="PREMIER">专车</button>
-            <button class="ghost" data-svc="TAXI">出租车</button>
-          </div>
-          <div id="fareBox" style="margin-top:12px"></div>
-          <div class="btns">
-            <button class="primary-big amber" id="btnCall">呼叫车辆</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2><span class="dot"></span>当前订单</h2>
-          <div id="orderEmpty" class="muted">暂无进行中的订单。设置起终点后呼叫车辆，这里实时显示接驾进度。</div>
-          <div id="orderBox" style="display:none">
-            <div class="spread">
-              <span class="badge info" id="orderId">--</span>
-              <span id="orderStatus"></span>
-            </div>
-            <div class="timeline" id="timeline"></div>
-            <div style="margin-top:12px">
-              <div class="kv"><span class="k">司机</span><span class="v" id="oDriver">等待接单…</span></div>
-              <div class="kv"><span class="k">车牌 / 车型</span><span class="v" id="oCar">--</span></div>
-              <div class="kv"><span class="k">行程</span><span class="v" id="oRoute">--</span></div>
-              <div class="kv"><span class="k">预估 / 实际</span><span class="v" id="oFee">--</span></div>
-              <div class="kv" id="oCancelFeeRow" style="display:none"><span class="k">取消费</span><span class="v" id="oCancelFee">--</span></div>
-            </div>
-            <div class="btns" style="margin-top:14px">
-              <button class="primary-big" id="btnPrimary" disabled>--</button>
-            </div>
-            <div class="btns">
-              <button class="ghost" id="btnShare">分享行程</button>
-              <button class="ghost" id="btnDetail">订单详情</button>
-              <button class="ghost" id="btnRefresh">刷新</button>
-            </div>
-            <p class="muted small" id="primaryHint" style="margin-top:10px"></p>
-          </div>
-        </div>
+  <!-- 叫车（地图首页） -->
+  <div class="pane active" id="pane-home">
+    <canvas id="map"></canvas>
+    <div class="home-top">
+      <div class="searchbar" id="searchDest"><span class="mag">🔍</span><span id="searchDestTxt">你要去哪儿？</span></div>
+      <div class="quick hide-elder">
+        <button data-quick="home">🏠 回家</button>
+        <button data-quick="company">🏢 去公司</button>
+        <button id="btnAddrMgr">📍 常用地址</button>
+        <button id="btnGps">🛰️ 定位</button>
       </div>
+      <div class="couponrow" id="campaignBanner" style="display:none;margin-top:9px"></div>
     </div>
-
-    <!-- 订单记录 -->
-    <div class="tabpane" id="pane-history">
-      <div class="card">
-        <h2><span class="dot"></span>我的订单记录</h2>
-        <div class="stats" id="histStats" style="margin-bottom:14px"></div>
-        <div class="filters">
-          <div><label>状态</label><select id="hStatus"><option value="">全部</option></select></div>
-          <div><label>开始日期</label><input type="date" id="hFrom"></div>
-          <div><label>结束日期</label><input type="date" id="hTo"></div>
-          <button id="hSearch">查询</button>
-        </div>
-        <div id="histList"></div>
-        <div class="pager" id="histPager"></div>
+    <button class="fab" id="fabShield" title="安全中心">🛡️</button>
+    <div class="sheet" id="homeSheet">
+      <div class="grip"></div>
+      <div id="callView">
+        <div class="odrow" id="rowOrigin"><span class="pin" style="background:var(--green)"></span><span class="txt" id="originTxt">点击设置起点</span><span class="edit">修改</span></div>
+        <div class="muted small" id="pickupHint" style="display:none;padding:4px 0;cursor:pointer;color:var(--teal,#0e9f8a)"></div>
+        <div class="odrow" id="rowDest"><span class="pin" style="background:var(--red)"></span><span class="txt" id="destTxt">点击设置终点</span><span class="edit">修改</span></div>
+        <div class="svc" id="svcRow"></div>
+        <div class="couponrow" id="couponRow"><span>🎟️ 优惠券</span><span id="couponTxt">选择券 ›</span></div>
+        <div class="chips" id="comfortRow"><button data-cf="安静">🤫 安静</button><button data-cf="空调">❄️ 空调</button><button data-cf="音乐">🎵 音乐</button><button data-cf="后备箱">🧳 后备箱</button></div>
+        <div class="spread" style="margin:6px 0"><span class="muted small">加价调度（元，可选，完单归司机）</span><input id="tipAmount" type="number" min="0" value="0" style="width:90px"></div>
+        <div class="fareline"><span class="muted small" id="fareMeta">预估价</span><span class="big" id="fareBig">--</span></div>
+        <div id="fareDetail"></div>
+        <button class="callbtn" id="btnCall">呼叫车辆</button>
+        <p class="muted small" style="margin-top:8px" id="callHint">支持多车型接力呼叫：首选无应答自动切换备选车型。</p>
       </div>
-    </div>
-
-    <!-- 钱包 -->
-    <div class="tabpane" id="pane-wallet">
-      <div class="grid cols-2">
-        <div class="card">
-          <h2><span class="dot"></span>我的钱包</h2>
-          <div class="money" id="balance">¥--</div>
-          <label>充值金额（元）</label>
-          <input id="topupAmount" type="number" value="100" min="1">
-          <div class="btns">
-            <button class="ghost" data-amt="50">¥50</button>
-            <button class="ghost" data-amt="100">¥100</button>
-            <button class="ghost" data-amt="200">¥200</button>
+      <div id="orderView" style="display:none">
+        <div class="spread"><span class="badge info" id="orderId">--</span><span id="orderStatus"></span></div>
+        <div class="timeline" id="timeline"></div>
+        <div class="drivercard" id="driverCard" style="display:none">
+          <span class="avatar" id="dAvatar">司</span>
+          <div style="flex:1">
+            <div class="plates" id="dName">--</div>
+            <div class="muted small" id="dCar">--</div>
+            <span class="eta" id="dEta" style="display:none"></span>
           </div>
-          <div class="btns"><button class="green block" id="btnTopup">充值</button></div>
-          <div class="spread" style="margin-top:14px">
-            <span class="muted small">免密自动扣款（行程结束宽限期后自动支付）</span>
-            <input type="checkbox" id="autoPayToggle" style="width:auto">
-          </div>
-          <p class="muted small" style="margin-top:12px">行程结束从钱包扣款；平台抽取 20% 服务费，其余入司机钱包。取消可能产生取消费（全额归司机）。开启免密后余额不足会推送催付提醒。</p>
+          <button class="ghost" id="btnIm" style="flex:none">💬 联系</button>
         </div>
-        <div class="card">
-          <h2><span class="dot"></span>资金流水</h2>
-          <div class="filters">
-            <div><label>类型</label><select id="wBiz"><option value="">全部</option></select></div>
-            <button id="wSearch">查询</button>
-          </div>
-          <div id="walletLedger"></div>
-          <div class="pager" id="walletPager"></div>
+        <div class="kv"><span class="k">行程</span><span class="v" id="oRoute">--</span></div>
+        <div class="kv"><span class="k">预估 / 实际</span><span class="v" id="oFee">--</span></div>
+        <div class="kv" id="oCancelFeeRow" style="display:none"><span class="k">取消费</span><span class="v" id="oCancelFee">--</span></div>
+        <div class="kv" id="oComfortRow" style="display:none"><span class="k">舒适偏好</span><span class="v" id="oComfort">--</span></div>
+        <span class="eta" id="remainEta" style="display:none"></span>
+        <button class="primary-big" id="btnPrimary" disabled>--</button>
+        <div class="actrow">
+          <button class="ghost" id="btnShare">分享</button>
+          <button class="ghost" id="btnModifyDest">改目的地</button>
+          <button class="ghost" id="btnSafety">安全</button>
+          <button class="ghost" id="btnDetail">详情</button>
+          <button class="ghost" id="btnComplaint">客服</button>
+          <button class="ghost" id="btnTip" style="display:none">打赏</button>
         </div>
-      </div>
-    </div>
-
-    <!-- 事件 -->
-    <div class="tabpane" id="pane-events">
-      <div class="card">
-        <h2><span class="dot"></span>实时事件</h2>
-        <div class="log" id="log" style="max-height:520px"></div>
+        <p class="muted small" id="primaryHint" style="margin-top:8px"></p>
       </div>
     </div>
   </div>
 
-  <nav class="bottomnav" id="bottomnav">
+  <!-- 订单 -->
+  <div class="pane" id="pane-history">
+    <div class="stats" id="histStats" style="margin-bottom:12px"></div>
+    <div class="card">
+      <div class="filters">
+        <div><label>状态</label><select id="hStatus"><option value="">全部</option></select></div>
+        <div><label>开始</label><input type="date" id="hFrom"></div>
+        <div><label>结束</label><input type="date" id="hTo"></div>
+        <button id="hSearch">查询</button>
+      </div>
+      <div id="histList"></div>
+      <div class="pager" id="histPager"></div>
+    </div>
+  </div>
+
+  <!-- 钱包 -->
+  <div class="pane" id="pane-wallet">
+    <div class="card">
+      <div class="muted small">钱包余额</div>
+      <div class="money" id="balance">¥--</div>
+      <label>充值金额（元）</label>
+      <input id="topupAmount" type="number" value="100" min="1">
+      <div class="btns"><button class="ghost" data-amt="50">¥50</button><button class="ghost" data-amt="100">¥100</button><button class="ghost" data-amt="200">¥200</button></div>
+      <div class="btns"><button class="green block" id="btnTopup">充值</button></div>
+      <div class="spread" style="margin-top:12px"><span class="muted small">免密自动扣款</span><input type="checkbox" id="autoPayToggle" style="width:auto"></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="spread"><b>资金流水</b><button class="ghost" id="wSearch">刷新</button></div>
+      <div class="filters"><div><label>类型</label><select id="wBiz"><option value="">全部</option></select></div></div>
+      <div id="walletLedger"></div>
+      <div class="pager" id="walletPager"></div>
+    </div>
+  </div>
+
+  <!-- 我的 -->
+  <div class="pane" id="pane-me">
+    <div class="membercard">
+      <div class="spread"><span class="lv" id="mLevel">普通会员</span><span id="mPoints">0 积分</span></div>
+      <div class="small" style="opacity:.8;margin-top:4px" id="mSpent">累计消费 ¥0.00</div>
+    </div>
+    <div class="card menu" style="margin-top:12px">
+      <button data-me="coupons">🎟️ 优惠券<span class="arr">›</span></button>
+      <button data-me="invoice">🧾 发票<span class="arr">›</span></button>
+      <button data-me="address">📍 地址管理<span class="arr">›</span></button>
+      <button data-me="contacts">🆘 紧急联系人<span class="arr">›</span></button>
+      <button data-me="notifications">🔔 消息中心<span class="arr">›</span></button>
+      <button data-me="complaint">🎧 客服/投诉<span class="arr">›</span></button>
+      <button data-me="invite">🎁 邀请有礼<span class="arr">›</span></button>
+      <button data-me="settings">⚙️ 设置<span class="arr">›</span></button>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="spread"><span class="muted small">长辈模式（大字体/简化）</span><input type="checkbox" id="elderToggle" style="width:auto"></div>
+    </div>
+    <p class="muted small" style="margin:12px 4px"><a href="index.html" style="color:var(--muted)">门户</a> · <a href="driver.html" style="color:var(--muted)">司机端</a> · <a href="admin.html" style="color:var(--muted)">管理端</a></p>
+  </div>
+
+  <nav class="bottomnav">
     <button data-tab="home" class="active"><span class="ico">🚕</span>叫车</button>
     <button data-tab="history"><span class="ico">📋</span>订单</button>
     <button data-tab="wallet"><span class="ico">💰</span>钱包</button>
-    <button data-tab="events"><span class="ico">📡</span>事件</button>
+    <button data-tab="me"><span class="ico">👤</span>我的</button>
   </nav>
+</div>
 
-  <script src="common.js"></script>
-  <script>
-    const STEPS = ['DISPATCHING', 'ACCEPTED', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'PAID'];
-    let passenger = null, ws = null, order = null, map = null, rated = false;
-    let origin = null, dest = null, mode = 'origin', serviceType = 'EXPRESS';
-    let driverPos = null, histPage = 1, walletPage = 1;
-    const $ = id => document.getElementById(id);
+<script src="common.js"></script>
+<script>
+const STEPS=['DISPATCHING','ACCEPTED','ARRIVED','IN_PROGRESS','COMPLETED','PAID'];
+const SVC=[{k:'EXPRESS',n:'快车'},{k:'TEHUI',n:'特惠'},{k:'CARPOOL',n:'拼车'},{k:'YOUXIANG',n:'优享'},{k:'PREMIER',n:'专车'},{k:'LUXURY',n:'豪华'},{k:'TAXI',n:'出租车'}];
+let passenger=null,ws=null,order=null,map=null,rated=false;
+let origin=null,dest=null,mode='origin',serviceType='EXPRESS',svcSel=['EXPRESS'],fallbackSvcs=[];
+let driverPos=null,driverInfo=null,histPage=1,walletPage=1;
+let quotes={},coupon=null,deviationRaised=false,recording=false;
+let cfSel=new Set(),payChannel='WALLET',mediaRec=null,recChunks=[],recUrl=null;
+const $=id=>document.getElementById(id);
 
-    // ---- 页签 ----
-    function switchTab(name) {
-      document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-      document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
-      if (name === 'history') loadHistory(1);
-      if (name === 'wallet') { refreshWallet(); loadWalletLedger(1); }
-      if (name === 'home' && map) setTimeout(() => map.resize(), 50);
+// ---- tab ----
+function switchTab(n){
+  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===n));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('active',p.id==='pane-'+n));
+  if(n==='history')loadHistory(1);
+  if(n==='wallet'){refreshWallet();loadWalletLedger(1);}
+  if(n==='me')loadMember();
+  if(n==='home'&&map)setTimeout(()=>map.resize(),50);
+}
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
+
+// ---- identity ----
+function setWsState(s){$('wsState').textContent=s==='connected'?'实时在线':'连接断开';}
+async function identityModal(){
+  const list=await api('GET','/api/passengers');
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>选择乘客身份</h3>
+    <label>已有乘客</label><select id="mSelect"><option value="">请选择…</option>${list.map(p=>`<option value="${p.id}">${escapeHtml(p.name)} (${p.id})</option>`).join('')}</select>
+    <div class="btns"><button class="block" id="mUse">使用选中身份</button></div>
+    <label>或注册新乘客</label><input id="mName" placeholder="姓名"><input id="mPhone" placeholder="手机号（可选）" style="margin-top:8px">
+    <div class="btns"><button class="green block" id="mReg">注册并进入</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#mUse').onclick=async()=>{const id=ov.querySelector('#mSelect').value;if(!id)return toast('请先选择乘客','warn');const p=await api('GET','/api/passengers/'+id);ov.remove();selectPassenger(p);};
+  ov.querySelector('#mReg').onclick=async()=>{const name=ov.querySelector('#mName').value.trim();if(!name)return toast('请填写姓名','warn');const p=await api('POST','/api/passengers',{name,phone:ov.querySelector('#mPhone').value.trim()});ov.remove();selectPassenger(p);toast('注册成功 '+p.id,'ok');};
+}
+function selectPassenger(p){
+  passenger=p;localStorage.setItem('ride.passengerId',p.id);
+  $('chipName').textContent=p.name;$('avatar').textContent=p.name.charAt(0);
+  $('autoPayToggle').checked=!!p.autoPay;
+  if(ws)ws.close();
+  ws=connectWS('passenger',p.id,onEvent,setWsState);
+  order=null;rated=false;renderOrder();refreshWallet();loadActiveOrder();loadMember();loadNotifications();
+}
+async function refreshWallet(){
+  if(!passenger)return;
+  try{const w=await api('GET','/api/wallets/'+passenger.id);$('balance').textContent=yuan(w.balance);}catch{}
+}
+async function loadActiveOrder(){
+  if(!passenger)return;
+  const list=await api('GET','/api/orders?passengerId='+passenger.id);
+  const a=list.find(o=>ACTIVE_STATUSES.includes(o.status));
+  if(a){order=a;rated=false;deviationRaised=false;renderOrder();}
+  else if(order&&['PAID','CANCELLED','EXPIRED','REFUNDED'].includes(order.status))renderOrder();
+}
+
+// ---- events ----
+function onEvent(msg){
+  const d=msg.data||{};
+  if(msg.event==='KICKED')return toast('同一身份在其他页面登录，本页已停止重连','warn');
+  if(msg.event==='CONNECTED'){refreshWallet();if(order)refreshOrder(order.id);else loadActiveOrder();return;}
+  if(msg.event==='DRIVER_LOCATION'){if(order&&d.orderId===order.id){driverPos={lat:d.lat,lng:d.lng};drawMarkers();updateEta();guardTrip();}return;}
+  const oid=d.orderId;
+  if(oid&&(!order||order.id===oid)){
+    refreshOrder(oid);
+    const tips={DRIVER_ACCEPTED:['司机已接单，正在赶来','ok'],DRIVER_ARRIVED:['司机已到达上车点','ok'],TRIP_STARTED:['行程开始','info'],TRIP_COMPLETED:['行程结束，请支付车费','warn'],ORDER_PAID:['支付成功，感谢乘坐','ok'],ORDER_CANCELLED:['订单已取消','warn'],DRIVER_CANCELLED:['司机取消，正在重新派单','warn'],ORDER_EXPIRED:['附近暂无司机','err'],ORDER_REFUNDED:['退款已到账','ok'],ORDER_RATED:['收到司机评价','info'],PAYMENT_REMINDER:['请及时支付车费','warn']};
+    if(tips[msg.event])toast(tips[msg.event][0],tips[msg.event][1]);
+    if(msg.event==='ORDER_PAID'){refreshWallet();rated=false;onPaid();}
+    if(msg.event==='SERVICE_FALLBACK')toast('首选车型无应答，已接力备选车型重新派单','warn');
+    if(msg.event==='DEST_CHANGED')toast('目的地已修改，预估价已更新','info');
+    if(msg.event==='ORDER_REFUNDED'||msg.event==='ORDER_CANCELLED')refreshWallet();
+    if(msg.event==='ORDER_EXPIRED')tryFallback();
+  }
+}
+async function refreshOrder(id){try{order=await api('GET','/api/orders/'+id);renderOrder();}catch{}}
+
+// ---- multi-service fallback ----
+function tryFallback(){
+  if(!fallbackSvcs.length||!origin||!dest)return;
+  const next=fallbackSvcs.shift();
+  toast('首选车型无应答，切换 '+SVC.find(s=>s.k===next).n+' 重新呼叫','warn');
+  serviceType=next;paintSvc();
+  doCall(true);
+}
+
+// ---- order render ----
+function renderOrder(){
+  const has=!!order;
+  $('callView').style.display=has?'none':'block';
+  $('orderView').style.display=has?'block':'none';
+  $('btnCall').disabled=!!(has&&ACTIVE_STATUSES.includes(order.status));
+  if(!has){drawMarkers();return;}
+  $('orderId').textContent=order.id;
+  $('orderStatus').innerHTML=statusBadge(order.status);
+  const idx=STEPS.indexOf(order.status);
+  $('timeline').innerHTML=STEPS.map((s,i)=>{let c='step';if(['CANCELLED','EXPIRED','REFUNDED'].includes(order.status))c+=i===0?' active':'';else if(i<idx)c+=' done';else if(i===idx)c+=' active';return `<span class="${c}">${STATUS_LABEL[s]}</span>`;}).join('');
+  $('oRoute').textContent=`${order.originName||'--'} → ${order.destName||'--'}`;
+  $('oFee').textContent=`${yuan(order.estimateFee)} / ${yuan(order.actualFee)}`;
+  $('oCancelFeeRow').style.display=order.cancelFee?'flex':'none';
+  $('oCancelFee').textContent=yuan(order.cancelFee);
+  $('oComfortRow').style.display=order.comfort?'flex':'none';
+  $('oComfort').textContent=order.comfort||'';
+  $('btnTip').style.display=order.status==='PAID'?'':'none';
+  const re=$('remainEta');
+  if(order.status==='IN_PROGRESS'&&driverPos&&dest){const km=distKm(driverPos,dest);re.style.display='inline-block';re.textContent=`剩余 ${km.toFixed(1)} km · 约 ${Math.max(1,Math.round(km/0.5))} 分钟`;}
+  else re.style.display='none';
+  const dc=$('driverCard');
+  if(order.driverId){
+    dc.style.display='flex';
+    $('dName').textContent=(order.driverName||'司机')+' · '+(order.driverCarNo||'');
+    $('dCar').textContent=(driverInfo&&driverInfo.carModel)||SERVICE_LABEL[order.serviceType]||'';
+    $('dAvatar').textContent=(order.driverName||'司').charAt(0);
+    loadDriverInfo(order.driverId);
+    updateEta();
+  } else dc.style.display='none';
+  const btn=$('btnPrimary'),hint=$('primaryHint');
+  btn.disabled=false;btn.className='primary-big';hint.textContent='';
+  switch(order.status){
+    case 'DISPATCHING':btn.textContent='取消叫车';btn.classList.add('red');btn.onclick=cancelOrder;hint.textContent=`第 ${order.dispatchRound||1} 轮派单中 · 已等待 ${Math.max(0,Math.round((Date.now()-order.createdAt)/1000))}s · 无应答自动接力备选车型。`;break;
+    case 'ACCEPTED':case 'ARRIVED':btn.textContent='取消订单';btn.classList.add('red');btn.onclick=cancelOrder;hint.textContent=cancelFeeHint();break;
+    case 'IN_PROGRESS':btn.textContent='行程进行中…';btn.disabled=true;hint.textContent='司机正在送您前往目的地，安全中心全程守护。';break;
+    case 'COMPLETED':btn.textContent=`支付车费 ${yuan(order.actualFee)}`;btn.classList.add('green');btn.onclick=payOrder;hint.textContent='按实际轨迹里程计价。';break;
+    case 'PAID':
+      if(!rated){btn.textContent='评价行程';btn.classList.add('amber');btn.onclick=rateOrder;}
+      else{btn.textContent='再来一单';btn.classList.add('amber');btn.onclick=()=>{order=null;renderOrder();};}
+      hint.textContent='支付完成，感谢乘坐。';break;
+    default:btn.textContent='重新叫车';btn.classList.add('amber');btn.onclick=()=>{order=null;renderOrder();};hint.textContent=order.cancelReason?`原因：${order.cancelReason}`:'';
+  }
+  drawMarkers();
+}
+async function loadDriverInfo(id){
+  try{driverInfo=await api('GET','/api/drivers/'+id);}catch{driverInfo=null;}
+  if(order&&order.driverId===id&&driverInfo)$('dCar').textContent=`${driverInfo.carModel||''} · ${SERVICE_LABEL[driverInfo.serviceType]||''} · 服务分 ${(driverInfo.serviceScore??5).toFixed(2)}`;
+}
+function distKm(a,b){const R=6371,dLa=(b.lat-a.lat)*Math.PI/180,dLo=(b.lng-a.lng)*Math.PI/180;const h=Math.sin(dLa/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+function updateEta(){
+  const el=$('dEta');
+  if(!order||!driverPos||!['ACCEPTED','ARRIVED'].includes(order.status)||origin==null){el.style.display='none';return;}
+  const km=distKm(driverPos,origin);
+  el.style.display='inline-block';
+  el.textContent=`距您 ${km.toFixed(1)} km · 约 ${Math.max(1,Math.round(km/0.5))} 分钟`;
+}
+function guardTrip(){
+  if(!order||order.status!=='IN_PROGRESS'||!driverPos||!origin||!dest||deviationRaised)return;
+  const total=distKm(origin,dest);if(total<0.5)return;
+  const d1=distKm(origin,driverPos),d2=distKm(driverPos,dest);
+  if(d1+d2>total*1.6+0.8){deviationRaised=true;api('POST','/api/support/safety/events',{userId:passenger.id,orderId:order.id,type:'DEVIATION',detail:'行程偏航检测'}).catch(()=>{});toast('检测到行程偏航，已记录并提醒安全中心','warn');}
+}
+function cancelFeeHint(){
+  if(order.status==='ARRIVED')return '司机已到达，取消将收取取消费 ¥3.00（全额补偿司机）。';
+  const left=order.acceptedAt?120000-(Date.now()-order.acceptedAt):120000;
+  return left>0?`接单后 ${Math.ceil(left/1000)} 秒内免费取消，超时收取 ¥3.00。`:'已超过免费取消窗口，取消将收取 ¥3.00。';
+}
+async function cancelOrder(){
+  const fee=order.status==='ARRIVED'||(order.status==='ACCEPTED'&&order.acceptedAt&&Date.now()-order.acceptedAt>120000);
+  const ok=await confirmDialog(fee?'当前取消将收取 <b>¥3.00 取消费</b>（全额补偿司机），确认取消？':'确认取消该订单？','确认取消');
+  if(!ok)return;
+  try{await api('POST',`/api/orders/${order.id}/cancel?reason=`+encodeURIComponent('乘客主动取消'));fallbackSvcs=[];refreshOrder(order.id);refreshWallet();}catch(e){toast(e.message,'err');}
+}
+async function payOrder(){
+  const fare=order.actualFare||order.fare;
+  const ok=await confirmDialog(`<h3>确认支付车费</h3>${fareHtml(fare)}${coupon?`<div class="kv"><span class="k">优惠券</span><span class="v" style="color:var(--orange)">-${yuan(couponSave())}</span></div>`:''}
+    <label>支付方式</label><select id="payCh"><option value="WALLET">钱包余额</option><option value="WECHAT">微信（演示）</option><option value="ALIPAY">支付宝（演示）</option><option value="CARD">银行卡（演示）</option></select>
+    <p class="muted small" style="margin-top:8px">非钱包渠道为演示标记，实际结算走钱包；支付后司机自动恢复接单。</p>`,`确认支付 ${yuan(order.actualFee)}`);
+  if(!ok)return;
+  payChannel=(document.getElementById('payCh')||{}).value||'WALLET';
+  await doPay();
+}
+async function doPay(){
+  const btn=$('btnPrimary');btn.disabled=true;btn.textContent='支付中…';
+  const oid=order.id;
+  try{await api('POST',`/api/orders/${oid}/pay?channel=${payChannel}`);refreshOrder(oid);refreshWallet();}
+  catch(e){
+    if(!e.status){toast('网络异常，支付结果确认中，请勿重复支付','warn');pollPayResult(oid);return;}
+    if((e.message||'').includes('余额不足')){renderOrder();await offerTopupAndPay();return;}
+    toast(e.message,'err');renderOrder();
+  }
+}
+function pollPayResult(orderId){
+  let tries=0;
+  const t=setInterval(async()=>{tries++;
+    try{const o=await api('GET','/api/orders/'+orderId);
+      if(o.status==='PAID'){clearInterval(t);order=o;rated=false;renderOrder();refreshWallet();onPaid();toast('支付已确认','ok');return;}
+      if(order&&order.id===orderId){order=o;renderOrder();}
+    }catch{}
+    if(tries>=8){clearInterval(t);if(order&&order.id===orderId)renderOrder();}
+  },2000);
+}
+async function offerTopupAndPay(){
+  const w=await api('GET','/api/wallets/'+passenger.id).catch(()=>null);
+  const gap=order.actualFee-(w?w.balance:0);
+  if(gap<=0){toast('余额已更新，请重试支付','info');return;}
+  const ok=await confirmDialog(`钱包余额不足（当前 ${yuan(w?w.balance:0)}），还差 <b>${yuan(gap)}</b>。充值差额并继续支付？`,'充值并支付');
+  if(!ok)return;
+  try{await api('POST','/api/wallets/topup',{userId:passenger.id,amount:gap,bizNo:'TOPUP-PAY-'+order.id});refreshWallet();await doPay();}catch(e){toast(e.message,'err');}
+}
+async function onPaid(){
+  if(coupon){api('POST',`/api/support/coupons/redeem?couponId=${coupon.id}&orderId=${order.id}`).catch(()=>{});coupon=null;paintCoupon();}
+  if(order&&order.actualFee)addMemberPoints(order.actualFee);
+  loadNotifications();loadMember();
+}
+async function addMemberPoints(fare){
+  try{await api('POST',`/api/support/member/points?userId=${passenger.id}&points=${Math.round(fare/100)}&spent=${fare}`);}catch{}
+}
+async function rateOrder(){
+  const r=await ratingModalTags('评价本次行程',['车内整洁','驾驶平稳','服务态度好','准时到达','路线合理']);
+  if(!r)return;
+  try{await api('POST',`/api/orders/${order.id}/rate`,{role:'passenger',score:r.score,comment:r.comment,tags:r.tags,anonymous:r.anonymous});rated=true;renderOrder();toast('评价已提交','ok');}catch(e){toast(e.message,'err');}
+}
+$('btnShare').onclick=async()=>{if(!order)return;try{const s=await api('POST','/api/share/'+order.id);const url=location.origin+s.path;await navigator.clipboard.writeText(url).catch(()=>{});api('POST','/api/support/safety/events',{userId:passenger.id,orderId:order.id,type:'SHARE',detail:'行程分享'}).catch(()=>{});toast('分享链接已复制','ok');}catch(e){toast(e.message,'err');}};
+$('btnDetail').onclick=()=>order&&openOrderDetail(order.id,{userId:passenger&&passenger.id});
+$('btnComplaint').onclick=()=>openComplaint(order&&order.id);
+$('btnModifyDest').onclick=()=>order&&openAddressSearch('destOverride');
+$('btnTip').onclick=async()=>{
+  if(!order||!order.driverId)return;
+  const ok=await confirmDialog('打赏司机 <b>¥5.00</b> 感谢本次服务？从钱包划转。','打赏 ¥5');
+  if(!ok)return;
+  try{await api('POST','/api/wallets/transfer',{fromUserId:passenger.id,toUserId:order.driverId,amount:500,orderId:order.id,bizType:'TIP',requestId:'TIP-USER-'+order.id});refreshWallet();toast('打赏已送达司机','ok');}catch(e){toast(e.message,'err');}
+};
+$('btnGps').onclick=()=>{
+  if(!navigator.geolocation)return toast('浏览器不支持定位','warn');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const lat=Math.min(40.12,Math.max(39.80,pos.coords.latitude)),lng=Math.min(116.65,Math.max(116.20,pos.coords.longitude));
+    setPoint('origin',+lat.toFixed(5),+lng.toFixed(5),'我的位置');toast('已用 GPS 定位设置起点','ok');
+    map.focus(+lat.toFixed(5),+lng.toFixed(5),16);
+    placeName(+lat.toFixed(5),+lng.toFixed(5)).then(n=>renamePoint('origin',n));
+  },()=>toast('定位失败，请手动选点','warn'),{timeout:5000});
+};
+document.querySelectorAll('#comfortRow button').forEach(b=>b.onclick=()=>{const k=b.dataset.cf;if(cfSel.has(k)){cfSel.delete(k);b.classList.remove('on');}else{cfSel.add(k);b.classList.add('on');}});
+async function loadCampaign(){
+  try{const cfg=await api('GET','/api/support/config');const t=cfg['support.campaign.text'];const el=$('campaignBanner');
+    if(t&&cfg['support.campaign.enabled']!=='false'){el.style.display='flex';el.innerHTML=`<span>🎉 ${escapeHtml(t)}</span>`;}else el.style.display='none';}catch{}
+}
+function openInvite(){
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>🎁 邀请有礼</h3><p class="muted small">邀请好友注册 ride-pro，双方各得 100 积分。</p>
+    <div class="couponrow"><span>我的邀请码</span><b>${passenger.id}</b></div>
+    <div class="btns"><button class="ghost" id="ivCopy">复制邀请链接</button><button class="green" id="ivClaim">领取奖励</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#ivCopy').onclick=async()=>{await navigator.clipboard.writeText(location.origin+'/passenger.html?invite='+passenger.id).catch(()=>{});toast('邀请链接已复制','ok');};
+  ov.querySelector('#ivClaim').onclick=async()=>{
+    if(localStorage.getItem('ride.inviteClaimed'))return toast('已领取过','warn');
+    await api('POST',`/api/support/member/points?userId=${passenger.id}&points=100&spent=0`);localStorage.setItem('ride.inviteClaimed','1');loadMember();toast('已领取 100 积分','ok');ov.remove();
+  };
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+}
+$('btnSafety').onclick=()=>openSafety();
+$('btnIm').onclick=()=>order&&openIm(order.id);
+
+// ---- map & call ----
+function drawMarkers(){
+  const m=[];
+  if(origin)m.push({lat:origin.lat,lng:origin.lng,color:'#00b578',label:'起点'});
+  if(dest)m.push({lat:dest.lat,lng:dest.lng,color:'#fa5151',label:'终点'});
+  if(driverPos&&order&&['ACCEPTED','ARRIVED','IN_PROGRESS'].includes(order.status))m.push({lat:driverPos.lat,lng:driverPos.lng,color:'#10aeff',label:'司机'});
+  map.setMarkers(m);
+}
+function setPoint(which,lat,lng,name){
+  const p={lat,lng,name};
+  if(which==='origin'){origin=p;$('originTxt').textContent=name;recommendPickup(p);}
+  else{dest=p;$('destTxt').textContent=name;$('searchDestTxt').textContent=name;}
+  drawMarkers();
+  if(origin&&dest)quoteAll().catch(()=>{});
+}
+function pickOnMap(p){
+  const which=mode;
+  map.focus(p.lat,p.lng,16);
+  setPoint(which,p.lat,p.lng,'定位中…');
+  placeName(p.lat,p.lng).then(n=>renamePoint(which,n));
+}
+function renamePoint(which,name){
+  if(which==='origin'){if(origin)origin.name=name;$('originTxt').textContent=name;}
+  else{if(dest)dest.name=name;$('destTxt').textContent=name;$('searchDestTxt').textContent=name;}
+  drawMarkers();
+}
+function recommendPickup(p){
+  const el=$('pickupHint');let best=null,bd=1e9;
+  PRESETS.forEach(x=>{const d=(x.lat-p.lat)**2+(x.lng-p.lng)**2;if(d<bd){bd=d;best=x;}});
+  if(best&&bd<0.0004){el.style.display='block';el.textContent='📍 推荐上车点：'+best.name+'（点击采纳）';el.onclick=()=>{setPoint('origin',best.lat,best.lng,best.name);el.style.display='none';};}
+  else el.style.display='none';
+}
+function paintSvc(){
+  $('svcRow').innerHTML=SVC.map(s=>`<button data-svc="${s.k}" class="${svcSel.includes(s.k)?'on':''}">${s.n}<span class="p" id="q-${s.k}">--</span></button>`).join('');
+  document.querySelectorAll('#svcRow button').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.svc;
+    if(svcSel.includes(k)){ if(svcSel.length>1) svcSel=svcSel.filter(x=>x!==k); }
+    else svcSel=[...svcSel,k];
+    serviceType=svcSel[0];paintSvc();paintFare();
+  });
+}
+async function quoteAll(){
+  await Promise.all(SVC.map(async s=>{
+    try{quotes[s.k]=await api('POST','/api/pricing/quote',{originLat:origin.lat,originLng:origin.lng,destLat:dest.lat,destLng:dest.lng,serviceType:s.k});}catch{quotes[s.k]=null;}
+    const el=$('q-'+s.k);if(el)el.textContent=quotes[s.k]?yuan(quotes[s.k].totalFee):'--';
+  }));
+  paintFare();
+}
+function couponSave(){
+  if(!coupon||!quotes[svcSel[0]])return 0;
+  const t=quotes[svcSel[0]].totalFee;
+  if(coupon.type==='DISCOUNT')return Math.round(t*(100-coupon.benefit)/100);
+  return Math.min(coupon.benefit,t);
+}
+function paintFare(){
+  const f=quotes[svcSel[0]];
+  $('fareBig').textContent=f?yuan(Math.max(0,f.totalFee-couponSave())):'--';
+  $('fareMeta').innerHTML=(f?`预估 ${f.distanceKm}km · ${f.durationMin}分钟`:'预估价')+(f&&f.peakRate>1?` <span class="tag warn">高峰 ×${f.peakRate}</span>`:'')+(svcSel.length>1?` <span class="tag ok">同呼${svcSel.length}车型</span>`:'');
+  $('fareDetail').innerHTML=f?`<details><summary class="muted small">计价明细</summary>${fareHtml(f)}</details>`:'';
+  paintCoupon();
+}
+function paintCoupon(){$('couponTxt').textContent=coupon?`${coupon.name} -${yuan(couponSave())} ›`:'选择券 ›';}
+$('couponRow').onclick=()=>openCoupons(true);
+$('rowOrigin').onclick=()=>openAddressSearch('origin');
+$('rowDest').onclick=()=>openAddressSearch('dest');
+$('searchDest').onclick=()=>openAddressSearch('dest');
+$('btnCall').onclick=async()=>{
+  if(!passenger){identityModal().catch(e=>toast(e.message,'err'));return;}
+  if(!origin||!dest)return toast('请先设置起点和终点','warn');
+  fallbackSvcs=[];
+  await doCall(false);
+};
+async function doCall(isFallback){
+  $('btnCall').disabled=true;
+  try{
+    const req={passengerId:passenger.id,originName:origin.name,originLat:origin.lat,originLng:origin.lng,destName:dest.name,destLat:dest.lat,destLng:dest.lng,serviceType:svcSel[0],serviceTypes:svcSel,comfort:[...cfSel].join(','),tipFee:Math.round(parseFloat($('tipAmount').value||'0')*100)||0,requestId:crypto.randomUUID().replace(/-/g,'')};
+    order=await api('POST','/api/orders',req);
+    rated=false;driverPos=null;deviationRaised=false;renderOrder();
+    toast(isFallback?'已切换车型重新呼叫':'已叫车，正在派单…','ok');
+  }catch(e){toast(e.message,'err');$('btnCall').disabled=false;}
+}
+// quick home/company
+document.querySelectorAll('[data-quick]').forEach(b=>b.onclick=async()=>{
+  if(!passenger)return toast('请先选择身份','warn');
+  const list=await api('GET','/api/support/addresses?userId='+passenger.id);
+  const label=b.dataset.quick==='home'?'家':'公司';
+  const a=list.find(x=>x.label===label);
+  if(!a)return toast('尚未设置'+label+'地址，请在常用地址中添加','warn');
+  setPoint('dest',a.lat,a.lng,a.name);switchTab('home');
+});
+$('btnAddrMgr').onclick=()=>openAddressMgr();
+
+// ---- address search sheet ----
+async function openAddressSearch(which){
+  mode=which;
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>${which==='destOverride'?'修改目的地':'搜索'+(which==='origin'?'起点':'终点')}</h3>
+    <input id="aKw" placeholder="输入地点 / 拼音，如 国贸 guomao" style="margin-top:10px">
+    <div id="aHist" class="chips"></div>
+    <div id="aList" style="margin-top:10px"></div>
+    <div class="btns"><button class="ghost block" id="aMap">改为地图点选</button></div></div>`;
+  document.body.appendChild(ov);
+  const hist=JSON.parse(localStorage.getItem('ride.poiHistory')||'[]');
+  const histEl=ov.querySelector('#aHist');
+  histEl.innerHTML=hist.map((h,i)=>`<button data-h="${i}">🕒 ${escapeHtml(h.name)}</button>`).join('');
+  histEl.querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>{const h=hist[+b.dataset.h];choose(h);});
+  const saveHist=p=>{const nh=[{name:p.name,lat:p.lat,lng:p.lng},...hist.filter(x=>x.name!==p.name)].slice(0,8);localStorage.setItem('ride.poiHistory',JSON.stringify(nh));};
+  const choose=p=>{
+    saveHist(p);
+    if(which==='destOverride'){
+      api('POST',`/api/orders/${order.id}/modify-dest?destName=${encodeURIComponent(p.name)}&destLat=${p.lat}&destLng=${p.lng}`).then(()=>{refreshOrder(order.id);toast('目的地已修改并重新计价','ok');}).catch(e=>toast(e.message,'err'));
+      ov.remove();return;
     }
-    document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+    setPoint(which,p.lat,p.lng,p.name);ov.remove();
+  };
+  const listEl=ov.querySelector('#aList');
+  const render=items=>{listEl.innerHTML=items.length?items.map(p=>`<div class="listitem" data-id="${p.id}"><div><b>${escapeHtml(p.name)}</b><div class="muted small">${escapeHtml(p.category||'')} · ${p.lat},${p.lng}</div></div><span class="tag">选择</span></div>`).join(''):'<div class="muted small">无匹配，试试地图点选</div>';
+    listEl.querySelectorAll('.listitem').forEach(el=>el.onclick=()=>{const p=items.find(x=>x.id===el.dataset.id);choose(p);});};
+  const search=async()=>{const kw=ov.querySelector('#aKw').value.trim();const items=await api('GET','/api/support/poi?kw='+encodeURIComponent(kw));render(items);};
+  ov.querySelector('#aKw').addEventListener('input',()=>search().catch(()=>{}));
+  ov.querySelector('#aMap').onclick=()=>{ov.remove();toast('点击地图设置'+(which==='origin'?'起点':'终点'),'info');mode=which==='destOverride'?'dest':which;};
+  search().catch(()=>{});
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+}
+// ---- address manage ----
+async function openAddressMgr(){
+  if(!passenger)return toast('请先选择身份','warn');
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>常用地址</h3><div id="amList"></div>
+    <label>新增地址</label><input id="amName" placeholder="名称，如 家/公司/国贸"><input id="amLabel" placeholder="标签：家 / 公司 / 收藏" style="margin-top:8px">
+    <label>坐标（预设地标）</label><select id="amPreset"></select>
+    <div class="btns"><button class="green block" id="amSave">保存</button></div></div>`;
+  document.body.appendChild(ov);
+  fillPresetSelect(ov.querySelector('#amPreset'));
+  const load=async()=>{const list=await api('GET','/api/support/addresses?userId='+passenger.id);
+    ov.querySelector('#amList').innerHTML=list.length?list.map(a=>`<div class="listitem"><div><b>${escapeHtml(a.name)}</b> <span class="tag">${escapeHtml(a.label||'收藏')}</span><div class="muted small">${a.lat},${a.lng}</div></div><button class="ghost" data-del="${a.id}">删除</button></div>`).join(''):'<div class="muted small">暂无常用地址</div>';
+    ov.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await api('DELETE','/api/support/addresses/'+b.dataset.del);load();});};
+  ov.querySelector('#amSave').onclick=async()=>{
+    const name=ov.querySelector('#amName').value.trim();if(!name)return toast('填名称','warn');
+    const sel=ov.querySelector('#amPreset').value;
+    const pt=sel!==''?PRESETS[+sel]:(origin||{lat:39.908,lng:116.459});
+    await api('POST','/api/support/addresses',{userId:passenger.id,name,label:ov.querySelector('#amLabel').value.trim()||'收藏',lat:pt.lat,lng:pt.lng});
+    toast('已保存','ok');load();};
+  load();ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+}
 
-    // ---- 身份 ----
-    function setWsState(s) {
-      const el = $('wsState');
-      el.textContent = s === 'connected' ? '实时在线' : '连接断开';
-      el.className = 'badge ' + (s === 'connected' ? 'ok' : 'err');
+// ---- coupons ----
+async function openCoupons(pick){
+  if(!passenger)return toast('请先选择身份','warn');
+  const [mine,tpl]=await Promise.all([api('GET','/api/support/coupons?userId='+passenger.id),api('GET','/api/support/templates').catch(()=>[])]);
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  const usable=mine.filter(c=>c.status==='UNUSED');
+  ov.innerHTML=`<div class="modal"><h3>优惠券</h3>
+    <div id="cpList">${usable.length?usable.map(c=>`<div class="listitem" data-cp="${c.id}"><div><b>${escapeHtml(c.name)}</b><div class="muted small">${c.type==='DISCOUNT'?c.benefit+'折':'满减'} · 满${yuan(c.minAmount)} · ${fmtTime(c.expireAt)}到期</div></div><span class="tag ${pick?'warn':'ok'}">${pick?'选用':'未使用'}</span></div>`).join(''):'<div class="muted small">暂无可用券</div>'}</div>
+    ${tpl.length?`<label>领券中心</label>${tpl.map(t=>`<div class="listitem"><div><b>${escapeHtml(t.name)}</b><div class="muted small">剩余 ${Math.max(0,(t.total||0)-(t.issued||0))}</div></div><button class="ghost" data-issue="${t.id}">领取</button></div>`).join('')}`:''}
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('[data-cp]').forEach(el=>el.onclick=()=>{if(!pick)return;coupon=mine.find(c=>c.id===el.dataset.cp);paintFare();ov.remove();toast('已选券','ok');});
+  ov.querySelectorAll('[data-issue]').forEach(b=>b.onclick=async()=>{await api('POST',`/api/support/coupons/issue?templateId=${b.dataset.issue}&userId=${passenger.id}`);toast('领取成功','ok');ov.remove();openCoupons(pick);});
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+}
+
+// ---- safety center ----
+async function openSafety(){
+  if(!passenger)return toast('请先选择身份','warn');
+  const contacts=await api('GET','/api/support/contacts?userId='+passenger.id);
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>🛡️ 安全中心</h3>
+    <button class="sos" id="sosBtn">🆘 一键报警（110）并通知紧急联系人</button>
+    <div class="btns"><button class="ghost" id="recBtn">${recording?'⏹ 停止录音':'⏺ 开启行程录音'}</button><button class="ghost" id="shareBtn">📤 分享行程</button><a href="tel:110" style="flex:1;text-align:center;text-decoration:none"><button class="ghost block">📞 110</button></a></div>
+    ${recUrl?`<div class="btns"><audio controls src="${recUrl}" style="width:100%"></audio></div>`:''}
+    <label>紧急联系人</label><div id="scList">${contacts.length?contacts.map(c=>`<div class="listitem"><div><b>${escapeHtml(c.name)}</b> <span class="tag">${escapeHtml(c.relation||'')}</span><div class="muted small">${escapeHtml(c.phone||'')}</div></div><button class="ghost" data-del="${c.id}">删除</button></div>`).join(''):'<div class="muted small">未设置紧急联系人</div>'}</div>
+    <input id="scName" placeholder="姓名" style="margin-top:8px"><input id="scPhone" placeholder="手机号" style="margin-top:8px"><input id="scRel" placeholder="关系（家人/朋友）" style="margin-top:8px">
+    <div class="btns"><button class="green block" id="scAdd">添加联系人</button></div>
+    <p class="muted small" style="margin-top:10px">录音/报警/分享均为演示联动：事件写入安全中心供管理端处置。</p></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#sosBtn').onclick=async()=>{
+    const ok=await confirmDialog('确认触发<b>一键报警</b>？将记录 SOS 事件并通知紧急联系人。','触发报警');
+    if(!ok)return;
+    await api('POST','/api/support/safety/events',{userId:passenger.id,orderId:order&&order.id,type:'SOS',detail:'乘客一键报警；紧急联系人:'+contacts.map(c=>c.name).join('/')});
+    toast('SOS 已上报，管理端安全台可见','err');ov.remove();
+  };
+  ov.querySelector('#recBtn').onclick=async()=>{
+    if(!recording){
+      try{
+        const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+        recChunks=[];mediaRec=new MediaRecorder(stream);
+        mediaRec.ondataavailable=e=>recChunks.push(e.data);
+        mediaRec.onstop=()=>{recUrl=URL.createObjectURL(new Blob(recChunks,{type:mediaRec.mimeType||'audio/webm'}));stream.getTracks().forEach(t=>t.stop());};
+        mediaRec.start();recording=true;
+        api('POST','/api/support/safety/events',{userId:passenger.id,orderId:order&&order.id,type:'RECORDING',detail:'开启行程录音'}).catch(()=>{});
+        toast('行程录音已开启','ok');
+      }catch(e){toast('无法访问麦克风：'+e.message,'err');return;}
+    }else{
+      if(mediaRec&&mediaRec.state!=='inactive')mediaRec.stop();
+      recording=false;
+      api('POST','/api/support/safety/events',{userId:passenger.id,orderId:order&&order.id,type:'RECORDING',detail:'停止行程录音'}).catch(()=>{});
+      toast('录音已停止','ok');
     }
+    ov.remove();openSafety();
+  };
+  ov.querySelector('#shareBtn').onclick=()=>{ov.remove();$('btnShare').click();};
+  ov.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await api('DELETE','/api/support/contacts/'+b.dataset.del);ov.remove();openSafety();});
+  ov.querySelector('#scAdd').onclick=async()=>{const name=ov.querySelector('#scName').value.trim();if(!name)return toast('填姓名','warn');await api('POST','/api/support/contacts',{userId:passenger.id,name,phone:ov.querySelector('#scPhone').value.trim(),relation:ov.querySelector('#scRel').value.trim()});ov.remove();openSafety();toast('已添加','ok');};
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+}
+$('btnShield').onclick=()=>openSafety();
+$('fabShield').onclick=()=>openSafety();
 
-    async function identityModal() {
-      const list = await api('GET', '/api/passengers');
-      const overlay = document.createElement('div');
-      overlay.className = 'modal-overlay';
-      overlay.innerHTML = `
-        <div class="modal">
-          <h3 style="margin:0 0 10px">选择乘客身份</h3>
-          <label>已有乘客</label>
-          <select id="mSelect">${'<option value="">请选择…</option>' + list.map(p => `<option value="${p.id}">${escapeHtml(p.name)} (${p.id})</option>`).join('')}</select>
-          <div class="btns"><button class="block" id="mUse">使用选中身份</button></div>
-          <label style="margin-top:16px">或注册新乘客</label>
-          <input id="mName" placeholder="姓名，如 张三">
-          <input id="mPhone" placeholder="手机号（可选）" style="margin-top:8px">
-          <div class="btns"><button class="green block" id="mReg">注册并进入</button></div>
-        </div>`;
-      document.body.appendChild(overlay);
-      overlay.querySelector('#mUse').onclick = async () => {
-        const id = overlay.querySelector('#mSelect').value;
-        if (!id) return toast('请先选择乘客', 'warn');
-        const p = await api('GET', '/api/passengers/' + id);
-        overlay.remove(); selectPassenger(p);
-      };
-      overlay.querySelector('#mReg').onclick = async () => {
-        const name = overlay.querySelector('#mName').value.trim();
-        if (!name) return toast('请填写姓名', 'warn');
-        const p = await api('POST', '/api/passengers', { name, phone: overlay.querySelector('#mPhone').value.trim() });
-        overlay.remove(); selectPassenger(p); toast('注册成功 ' + p.id, 'ok');
-      };
-    }
-    $('identityChip').onclick = () => identityModal().catch(e => toast(e.message, 'err'));
+// ---- IM ----
+async function openIm(orderId){
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>💬 联系司机（号码保护）</h3>
+    <div class="muted small">虚拟号 170****${String(orderId).slice(-4)} · 消息经平台中转</div>
+    <div class="imbox" id="imBox"></div>
+    <div class="chips" id="imQuick"><button>我到了</button><button>请稍等</button><button>好的</button></div>
+    <div class="row"><input id="imText" placeholder="输入消息…"><button id="imSend" style="flex:none">发送</button></div></div>`;
+  document.body.appendChild(ov);
+  const box=ov.querySelector('#imBox');
+  const load=async()=>{const msgs=await api('GET','/api/support/im?orderId='+orderId);box.innerHTML=msgs.map(m=>`<div class="immsg ${m.fromRole==='P'?'me':''}"><span>${escapeHtml(m.text)}</span></div>`).join('')||'<div class="muted small">暂无消息</div>';box.scrollTop=box.scrollHeight;};
+  const send=async text=>{if(!text.trim())return;await api('POST','/api/support/im',{orderId,fromRole:'P',fromId:passenger.id,text});ov.querySelector('#imText').value='';load();};
+  ov.querySelector('#imSend').onclick=()=>send(ov.querySelector('#imText').value);
+  ov.querySelectorAll('#imQuick button').forEach(b=>b.onclick=()=>send(b.textContent));
+  load();const t=setInterval(load,3000);
+  ov.addEventListener('click',e=>{if(e.target===ov){clearInterval(t);ov.remove();}});
+}
 
-    function selectPassenger(p) {
-      passenger = p;
-      localStorage.setItem('ride.passengerId', p.id);
-      $('chipName').textContent = `${p.name} · ${yuan(0)}`;
-      $('identityChip').querySelector('.avatar').textContent = p.name.charAt(0);
-      $('autoPayToggle').checked = !!p.autoPay;
-      if (ws) ws.close();
-      ws = connectWS('passenger', p.id, onEvent, setWsState);
-      order = null; rated = false; renderOrder();
-      refreshWallet(); loadActiveOrder();
-    }
+// ---- complaint / ticket ----
+async function openComplaint(orderId){
+  if(!passenger)return toast('请先选择身份','warn');
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>🎧 客服 / 投诉</h3>
+    <label>问题类型</label><select id="tCat"><option>费用异议</option><option>服务投诉</option><option>失物招领</option><option>安全问题</option><option>其他</option></select>
+    <label>描述</label><textarea id="tDesc" rows="3" placeholder="请描述问题…"></textarea>
+    <div class="btns"><button class="green block" id="tSubmit">提交工单（转智能客服）</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#tSubmit').onclick=async()=>{
+    const desc=ov.querySelector('#tDesc').value.trim();if(!desc)return toast('请填写描述','warn');
+    const r=await api('POST','/api/support/tickets',{userId:passenger.id,userName:passenger.name,orderId:orderId||'',category:ov.querySelector('#tCat').value,title:ov.querySelector('#tCat').value,description:desc});
+    ov.remove();toast(r.csTicketId?'工单已提交客服 '+r.csTicketId:'工单已受理（客服离线将自动同步）','ok');loadNotifications();
+  };
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+}
 
-    async function refreshWallet() {
-      if (!passenger) return;
-      try {
-        const w = await api('GET', '/api/wallets/' + passenger.id);
-        $('balance').textContent = yuan(w.balance);
-        $('chipName').textContent = `${passenger.name} · ${yuan(w.balance)}`;
-      } catch { /* ignore */ }
-    }
+// ---- invoice ----
+async function openInvoice(){
+  if(!passenger)return toast('请先选择身份','warn');
+  const paid=await api('GET','/api/orders/query?'+new URLSearchParams({passengerId:passenger.id,status:'PAID',page:1,size:50}));
+  const inv=await api('GET','/api/support/invoices?userId='+passenger.id);
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>🧾 发票</h3>
+    <label>选择行程</label><div id="ivList">${paid.items.length?paid.items.map(o=>`<div class="listitem"><label style="display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" style="width:auto" data-iv="${o.id}" data-amt="${o.actualFee||0}"><span>${escapeHtml(o.originName)}→${escapeHtml(o.destName)} · ${yuan(o.actualFee)}</span></label></div>`).join(''):'<div class="muted small">暂无可开票行程</div>'}</div>
+    <label>抬头</label><input id="ivTitle" placeholder="个人 / 公司名称"><input id="ivTax" placeholder="税号（公司必填）" style="margin-top:8px">
+    <div class="btns"><button class="green block" id="ivSubmit">开具发票</button></div>
+    <label>已开具</label><div>${inv.length?inv.map(i=>`<div class="listitem"><div><b>${escapeHtml(i.title)}</b><div class="muted small">${yuan(i.amount)} · ${fmtTime(i.createdAt)}</div></div><span class="tag ok">${i.status}</span></div>`).join(''):'<div class="muted small">暂无</div>'}</div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#ivSubmit').onclick=async()=>{
+    const sel=[...ov.querySelectorAll('[data-iv]:checked')];if(!sel.length)return toast('选择行程','warn');
+    const title=ov.querySelector('#ivTitle').value.trim()||'个人';
+    const amount=sel.reduce((s,x)=>s+ +x.dataset.amt,0);
+    await api('POST','/api/support/invoice',{userId:passenger.id,orderIds:sel.map(x=>x.dataset.iv).join(','),title,taxNo:ov.querySelector('#ivTax').value.trim(),amount});
+    toast('发票已开具','ok');ov.remove();openInvoice();
+  };
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+}
 
-    async function loadActiveOrder() {
-      if (!passenger) return;
-      const list = await api('GET', '/api/orders?passengerId=' + passenger.id);
-      const active = list.find(o => ACTIVE_STATUSES.includes(o.status));
-      if (active) { order = active; rated = false; renderOrder(); }
-      else if (order && ['PAID', 'CANCELLED', 'EXPIRED', 'REFUNDED'].includes(order.status)) renderOrder();
-    }
+// ---- notifications ----
+async function loadNotifications(){
+  if(!passenger)return;
+  try{const n=await api('GET','/api/support/notifications?userId='+passenger.id);
+    const unread=n.filter(x=>!x.readFlag).length;
+    $('btnBell').classList.toggle('has',unread>0);
+  }catch{}
+}
+async function openNotifications(){
+  if(!passenger)return toast('请先选择身份','warn');
+  const n=await api('GET','/api/support/notifications?userId='+passenger.id);
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>🔔 消息中心</h3><div>${n.length?n.map(x=>`<div class="listitem" data-nt="${x.id}"><div><b>${escapeHtml(x.title)}</b><div class="muted small">${escapeHtml(x.body||'')} · ${fmtTime(x.createdAt)}</div></div>${x.readFlag?'':'<span class="tag warn">未读</span>'}</div>`).join(''):'<div class="muted small">暂无消息</div>'}</div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('[data-nt]').forEach(el=>el.onclick=async()=>{await api('POST','/api/support/notifications/read/'+el.dataset.nt);loadNotifications();el.querySelector('.tag')?.remove();});
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+}
+$('btnBell').onclick=()=>openNotifications();
 
-    // ---- 实时事件 ----
-    function onEvent(msg) {
-      pushLog($('log'), msg.event, msg.data);
-      const d = msg.data || {};
-      if (msg.event === 'KICKED') return toast('同一身份在其他页面登录，本页已停止重连', 'warn');
-      if (msg.event === 'CONNECTED') { refreshWallet(); if (order) refreshOrder(order.id); else loadActiveOrder(); return; }
-      if (msg.event === 'DRIVER_LOCATION') {
-        if (order && d.orderId === order.id) { driverPos = { lat: d.lat, lng: d.lng }; drawMarkers(); }
-        return;
-      }
-      const oid = d.orderId;
-      if (oid && (!order || order.id === oid)) {
-        refreshOrder(oid);
-        const tips = {
-          DRIVER_ACCEPTED: ['司机已接单，正在赶来', 'ok'], DRIVER_ARRIVED: ['司机已到达上车点', 'ok'],
-          TRIP_STARTED: ['行程开始', 'info'], TRIP_COMPLETED: ['行程结束，请支付车费', 'warn'],
-          ORDER_PAID: ['支付成功，感谢乘坐', 'ok'], ORDER_CANCELLED: ['订单已取消', 'warn'],
-          DRIVER_CANCELLED: ['司机取消，正在重新派单', 'warn'], ORDER_EXPIRED: ['附近暂无司机，订单已过期', 'err'],
-          ORDER_REFUNDED: ['退款已到账', 'ok'], ORDER_RATED: ['收到司机评价', 'info'],
-          PAYMENT_REMINDER: ['行程已结束，请及时支付车费', 'warn'],
-        };
-        if (tips[msg.event]) {
-          if (msg.event === 'ORDER_REFUNDED' && d.partial) toast(`部分退款已到账 ${yuan(d.refundAmount)}，剩余可退 ${yuan(d.remaining)}`, 'ok');
-          else toast(tips[msg.event][0], tips[msg.event][1]);
-        }
-        if (msg.event === 'ORDER_PAID') { refreshWallet(); rated = false; }
-        if (msg.event === 'ORDER_REFUNDED') refreshWallet();
-        if (msg.event === 'ORDER_CANCELLED' || msg.event === 'ORDER_EXPIRED') refreshWallet();
-      }
-    }
+// ---- member / me ----
+async function loadMember(){
+  if(!passenger)return;
+  try{const m=await api('GET','/api/support/member?userId='+passenger.id);
+    $('mLevel').textContent=m.level;$('mPoints').textContent=m.points+' 积分';$('mSpent').textContent='累计消费 '+yuan(m.totalSpent);}catch{}
+}
+document.querySelectorAll('[data-me]').forEach(b=>b.onclick=()=>{
+  const k=b.dataset.me;
+  if(k==='coupons')openCoupons(false);
+  if(k==='invoice')openInvoice();
+  if(k==='address')openAddressMgr();
+  if(k==='contacts')openSafety();
+  if(k==='notifications')openNotifications();
+  if(k==='complaint')openComplaint(order&&order.id);
+  if(k==='invite')openInvite();
+  if(k==='settings')openSettings();
+});
+function openSettings(){
+  const ov=document.createElement('div');ov.className='modal-overlay';
+  ov.innerHTML=`<div class="modal"><h3>⚙️ 设置</h3>
+    <div class="spread" style="padding:10px 0"><span>长辈模式</span><input type="checkbox" id="setElder" style="width:auto" ${document.body.classList.contains('elder')?'checked':''}></div>
+    <div class="spread" style="padding:10px 0"><span>高对比度（无障碍）</span><input type="checkbox" id="setHc" style="width:auto" ${document.body.classList.contains('hc')?'checked':''}></div>
+    <div class="spread" style="padding:10px 0"><span>English</span><input type="checkbox" id="setEn" style="width:auto" ${lang==='en'?'checked':''}></div>
+    <div class="spread" style="padding:10px 0"><span>免密自动扣款</span><input type="checkbox" id="setAuto" style="width:auto" ${$('autoPayToggle').checked?'checked':''}></div>
+    <div class="btns"><button class="ghost block" id="setLogout">切换身份</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#setElder').onchange=e=>{document.body.classList.toggle('elder',e.target.checked);$('elderToggle').checked=e.target.checked;};
+  ov.querySelector('#setHc').onchange=e=>{document.body.classList.toggle('hc',e.target.checked);};
+  ov.querySelector('#setEn').onchange=e=>{lang=e.target.checked?'en':'zh';applyI18n();};
+  ov.querySelector('#setAuto').onchange=e=>{$('autoPayToggle').checked=e.target.checked;$('autoPayToggle').onchange();};
+  ov.querySelector('#setLogout').onclick=()=>{ov.remove();identityModal().catch(e=>toast(e.message,'err'));};
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+}
+$('elderToggle').onchange=e=>document.body.classList.toggle('elder',e.target.checked);
 
-    async function refreshOrder(id) {
-      try { order = await api('GET', '/api/orders/' + id); renderOrder(); } catch { /* ignore */ }
-    }
+// ---- history / wallet ----
+Object.keys(STATUS_LABEL).forEach(s=>$('hStatus').insertAdjacentHTML('beforeend',`<option value="${s}">${STATUS_LABEL[s]}</option>`));
+async function loadHistory(page){
+  if(!passenger){$('histList').innerHTML='<div class="muted">请先选择身份</div>';return;}
+  histPage=page;
+  const q=new URLSearchParams({passengerId:passenger.id,page,size:10});
+  if($('hStatus').value)q.set('status',$('hStatus').value);
+  const from=dayStartTs($('hFrom').value),to=dayEndTs($('hTo').value);
+  if(from)q.set('from',from);if(to)q.set('to',to);
+  try{
+    const res=await api('GET','/api/orders/query?'+q);
+    $('histList').innerHTML=historyRowsHtml(res.items);
+    bindHistoryRows($('histList'),oid=>openOrderDetail(oid,{userId:passenger.id}));
+    renderPager($('histPager'),res.page,res.size,res.total,loadHistory);
+    const paid=await api('GET','/api/orders/query?'+new URLSearchParams({passengerId:passenger.id,status:'PAID',page:1,size:100}));
+    const spend=paid.items.reduce((s,o)=>s+(o.actualFee||0),0);
+    const today=paid.items.filter(o=>o.paidAt>=dayStartTs(fmtDateInput())).length;
+    $('histStats').innerHTML=`<div class="stat"><div class="n">${res.total}</div><div class="l">总订单</div></div><div class="stat"><div class="n green">${yuan(spend)}</div><div class="l">累计消费</div></div><div class="stat"><div class="n amber">${today}</div><div class="l">今日完成</div></div>`;
+  }catch(e){toast(e.message,'err');}
+}
+$('hSearch').onclick=()=>loadHistory(1);
+Object.keys(BIZ_LABEL).forEach(b=>$('wBiz').insertAdjacentHTML('beforeend',`<option value="${b}">${BIZ_LABEL[b]}</option>`));
+async function loadWalletLedger(page){
+  if(!passenger)return;walletPage=page;
+  const q=new URLSearchParams({page,size:10});if($('wBiz').value)q.set('bizType',$('wBiz').value);
+  try{const res=await api('GET',`/api/wallets/${passenger.id}/ledger?`+q);
+    $('walletLedger').innerHTML=ledgerRowsHtml(res.items);
+    renderPager($('walletPager'),res.page,res.size,res.total,loadWalletLedger);}catch(e){toast(e.message,'err');}
+}
+$('wSearch').onclick=()=>loadWalletLedger(1);
+let topupPending=null;
+$('btnTopup').onclick=async()=>{
+  if(!passenger)return toast('请先选择身份','warn');
+  const v=parseFloat($('topupAmount').value);if(!(v>0))return toast('充值金额需大于 0','warn');
+  const amount=Math.round(v*100);const btn=$('btnTopup');btn.disabled=true;
+  if(!topupPending||topupPending.amount!==amount)topupPending={amount,bizNo:'TOPUP-'+passenger.id+'-'+crypto.randomUUID().replace(/-/g,'')};
+  try{await api('POST','/api/wallets/topup',{userId:passenger.id,amount,bizNo:topupPending.bizNo});topupPending=null;refreshWallet();loadWalletLedger(walletPage);toast('充值成功','ok');}
+  catch(e){if(!e.status){toast('网络异常，充值结果确认中，重试不会重复入账','warn');refreshWallet();}else{topupPending=null;toast(e.message,'err');}}
+  finally{btn.disabled=false;}
+};
+document.querySelectorAll('[data-amt]').forEach(b=>b.onclick=()=>{$('topupAmount').value=b.dataset.amt;});
+$('autoPayToggle').onchange=async()=>{
+  if(!passenger){$('autoPayToggle').checked=false;return toast('请先选择身份','warn');}
+  const enabled=$('autoPayToggle').checked;
+  try{passenger=await api('POST',`/api/passengers/${passenger.id}/auto-pay?enabled=${enabled}`);toast(enabled?'已开启免密自动扣款':'已关闭免密自动扣款','ok');}
+  catch(e){$('autoPayToggle').checked=!enabled;toast(e.message,'err');}
+};
 
-    // ---- 订单渲染：状态驱动单一主按钮 ----
-    function renderOrder() {
-      const has = !!order;
-      $('orderBox').style.display = has ? 'block' : 'none';
-      $('orderEmpty').style.display = has ? 'none' : 'block';
-      $('btnCall').disabled = !!(has && ACTIVE_STATUSES.includes(order.status));
-      if (!has) { drawMarkers(); return; }
-      $('orderId').textContent = order.id;
-      $('orderStatus').innerHTML = statusBadge(order.status);
-      const idx = STEPS.indexOf(order.status);
-      $('timeline').innerHTML = STEPS.map((s, i) => {
-        let cls = 'step';
-        if (['CANCELLED', 'EXPIRED', 'REFUNDED'].includes(order.status)) cls += i === 0 ? ' active' : '';
-        else if (i < idx) cls += ' done'; else if (i === idx) cls += ' active';
-        return `<span class="${cls}">${STATUS_LABEL[s]}</span>`;
-      }).join('');
-      $('oDriver').textContent = order.driverName ? `${order.driverName} (${order.driverId})` : '等待接单…';
-      $('oCar').textContent = order.driverCarNo || '--';
-      $('oRoute').textContent = `${order.originName || '--'} → ${order.destName || '--'}`;
-      $('oFee').textContent = `${yuan(order.estimateFee)} / ${yuan(order.actualFee)}`;
-      $('oCancelFeeRow').style.display = order.cancelFee ? 'flex' : 'none';
-      $('oCancelFee').textContent = yuan(order.cancelFee);
-
-      const btn = $('btnPrimary'), hint = $('primaryHint');
-      btn.disabled = false; btn.className = 'primary-big';
-      hint.textContent = '';
-      switch (order.status) {
-        case 'DISPATCHING':
-          btn.textContent = '取消叫车'; btn.classList.add('red');
-          btn.onclick = () => cancelOrder();
-          hint.textContent = `正在第 ${order.dispatchRound || 1} 轮派单，超时自动扩大范围；无人接单将自动过期。`;
-          break;
-        case 'ACCEPTED': case 'ARRIVED':
-          btn.textContent = '取消订单'; btn.classList.add('red');
-          btn.onclick = () => cancelOrder();
-          hint.textContent = cancelFeeHint();
-          break;
-        case 'IN_PROGRESS':
-          btn.textContent = '行程进行中…'; btn.disabled = true;
-          hint.textContent = '司机正在送您前往目的地，地图实时显示车辆位置。';
-          break;
-        case 'COMPLETED':
-          btn.textContent = `支付车费 ${yuan(order.actualFee)}`; btn.classList.add('green');
-          btn.onclick = () => payOrder();
-          hint.textContent = '按实际轨迹里程计价，支付后司机自动恢复接单。';
-          break;
-        case 'PAID':
-          if (!rated) {
-            btn.textContent = '评价行程'; btn.classList.add('amber');
-            btn.onclick = () => rateOrder();
-          } else {
-            btn.textContent = '再来一单'; btn.classList.add('amber');
-            btn.onclick = () => { order = null; renderOrder(); };
-          }
-          hint.textContent = '支付完成，感谢乘坐 ride-pro。';
-          break;
-        default:
-          btn.textContent = '重新叫车'; btn.classList.add('amber');
-          btn.onclick = () => { order = null; renderOrder(); };
-          hint.textContent = order.cancelReason ? `原因：${order.cancelReason}` : '';
-      }
-      drawMarkers();
-    }
-
-    function cancelFeeHint() {
-      if (order.status === 'ARRIVED') return '司机已到达，取消将收取取消费 ¥3.00（全额补偿司机）。';
-      const left = order.acceptedAt ? 120000 - (Date.now() - order.acceptedAt) : 120000;
-      return left > 0 ? `接单后 ${Math.ceil(left / 1000)} 秒内免费取消，超时收取 ¥3.00。` : '已超过免费取消窗口，取消将收取 ¥3.00。';
-    }
-
-    async function cancelOrder() {
-      const fee = order.status === 'ARRIVED' ||
-        (order.status === 'ACCEPTED' && order.acceptedAt && Date.now() - order.acceptedAt > 120000);
-      const ok = await confirmDialog(
-        fee ? '当前取消将收取 <b>¥3.00 取消费</b>（全额补偿司机），确认取消？' : '确认取消该订单？', '确认取消');
-      if (!ok) return;
-      try {
-        await api('POST', `/api/orders/${order.id}/cancel?reason=` + encodeURIComponent('乘客主动取消'));
-        refreshOrder(order.id); refreshWallet();
-      } catch (e) { toast(e.message, 'err'); }
-    }
-
-    async function payOrder() {
-      const fare = order.actualFare || order.fare;
-      const ok = await confirmDialog(
-        `<h3 style="margin:0 0 10px">确认支付车费</h3>${fareHtml(fare)}
-         <p class="muted small" style="margin-top:10px">从钱包余额扣款；支付后司机自动恢复接单。</p>`,
-        `确认支付 ${yuan(order.actualFee)}`);
-      if (!ok) return;
-      await doPay();
-    }
-
-    async function doPay() {
-      const btn = $('btnPrimary');
-      btn.disabled = true; btn.textContent = '支付中…';
-      const oid = order.id;
-      try {
-        await api('POST', `/api/orders/${oid}/pay`);
-        refreshOrder(oid); refreshWallet();
-      } catch (e) {
-        if (!e.status) {
-          // 网络异常：服务端可能已扣款，短轮询确认结果，禁止盲目重试
-          toast('网络异常，支付结果确认中，请勿重复支付', 'warn');
-          pollPayResult(oid);
-          return;
-        }
-        if ((e.message || '').includes('余额不足')) {
-          renderOrder();
-          await offerTopupAndPay();
-          return;
-        }
-        toast(e.message, 'err'); renderOrder();
-      }
-    }
-
-    function pollPayResult(orderId) {
-      let tries = 0;
-      const t = setInterval(async () => {
-        tries++;
-        try {
-          const o = await api('GET', '/api/orders/' + orderId);
-          if (o.status === 'PAID') {
-            clearInterval(t); order = o; rated = false; renderOrder(); refreshWallet();
-            toast('支付已确认', 'ok'); return;
-          }
-          if (order && order.id === orderId) { order = o; renderOrder(); }
-        } catch { /* ignore */ }
-        if (tries >= 8) { clearInterval(t); if (order && order.id === orderId) renderOrder(); }
-      }, 2000);
-    }
-
-    async function offerTopupAndPay() {
-      const w = await api('GET', '/api/wallets/' + passenger.id).catch(() => null);
-      const gap = order.actualFee - (w ? w.balance : 0);
-      if (gap <= 0) { toast('余额已更新，请重试支付', 'info'); return; }
-      const ok = await confirmDialog(
-        `钱包余额不足（当前 ${yuan(w ? w.balance : 0)}），还差 <b>${yuan(gap)}</b>。充值差额并继续支付？`, '充值并支付');
-      if (!ok) return;
-      try {
-        await api('POST', '/api/wallets/topup', { userId: passenger.id, amount: gap, bizNo: 'TOPUP-PAY-' + order.id });
-        refreshWallet();
-        await doPay();
-      } catch (e) { toast(e.message, 'err'); }
-    }
-
-    async function rateOrder() {
-      const r = await ratingModal('评价本次行程');
-      if (!r) return;
-      try {
-        await api('POST', `/api/orders/${order.id}/rate`, { role: 'passenger', score: r.score, comment: r.comment });
-        rated = true; renderOrder(); toast('评价已提交，感谢反馈', 'ok');
-      } catch (e) { toast(e.message, 'err'); }
-    }
-
-    $('btnShare').onclick = async () => {
-      if (!order) return;
-      try {
-        const s = await api('POST', '/api/share/' + order.id);
-        const url = location.origin + s.path;
-        await navigator.clipboard.writeText(url).catch(() => {});
-        toast('分享链接已复制：' + url, 'ok');
-      } catch (e) { toast(e.message, 'err'); }
-    };
-    $('btnDetail').onclick = () => order && openOrderDetail(order.id, { userId: passenger && passenger.id });
-    $('btnRefresh').onclick = () => order && refreshOrder(order.id);
-
-    // ---- 地图与叫车 ----
-    function drawMarkers() {
-      const m = [];
-      if (origin) m.push({ lat: origin.lat, lng: origin.lng, color: '#34d399', label: '起点' });
-      if (dest) m.push({ lat: dest.lat, lng: dest.lng, color: '#f87171', label: '终点' });
-      if (driverPos && order && ['ACCEPTED', 'ARRIVED', 'IN_PROGRESS'].includes(order.status)) {
-        m.push({ lat: driverPos.lat, lng: driverPos.lng, color: '#60a5fa', label: '司机' });
-      }
-      map.setMarkers(m);
-    }
-
-    function setPoint(which, lat, lng, name) {
-      const p = { lat, lng, name };
-      if (which === 'origin') { origin = p; $('originName').value = name; }
-      else { dest = p; $('destName').value = name; }
-      drawMarkers();
-      if (origin && dest) quote().catch(() => {});
-    }
-
-    function bindPreset(selectId, which) {
-      $(selectId).addEventListener('change', e => {
-        if (e.target.value === '') return;
-        const p = PRESETS[e.target.value];
-        setPoint(which, p.lat, p.lng, p.name);
-      });
-    }
-
-    function paintServiceBtns() {
-      document.querySelectorAll('#serviceBtns button').forEach(b => {
-        b.className = b.dataset.svc === serviceType ? 'amber' : 'ghost';
-      });
-    }
-    document.querySelectorAll('#serviceBtns button').forEach(b => b.onclick = () => {
-      serviceType = b.dataset.svc; paintServiceBtns();
-      if (origin && dest) quote().catch(e => toast(e.message, 'err'));
-    });
-
-    async function quote() {
-      if (!origin || !dest) return;
-      const f = await api('POST', '/api/pricing/quote', {
-        originLat: origin.lat, originLng: origin.lng, destLat: dest.lat, destLng: dest.lng, serviceType
-      });
-      $('fareBox').innerHTML = fareHtml(f);
-    }
-
-    $('btnCall').onclick = async () => {
-      if (!passenger) { identityModal().catch(e => toast(e.message, 'err')); return; }
-      if (!origin || !dest) return toast('请先设置起点和终点', 'warn');
-      $('btnCall').disabled = true;
-      try {
-        const req = {
-          passengerId: passenger.id, originName: origin.name || $('originName').value, originLat: origin.lat, originLng: origin.lng,
-          destName: dest.name || $('destName').value, destLat: dest.lat, destLng: dest.lng,
-          serviceType, requestId: crypto.randomUUID().replace(/-/g, '')
-        };
-        order = await api('POST', '/api/orders', req);
-        rated = false; driverPos = null; renderOrder();
-        toast('已叫车，正在派单…', 'ok');
-      } catch (e) { toast(e.message, 'err'); $('btnCall').disabled = false; }
-    };
-    $('modeOrigin').onclick = () => { mode = 'origin'; $('mapHint').textContent = '点击地图设置起点'; };
-    $('modeDest').onclick = () => { mode = 'dest'; $('mapHint').textContent = '点击地图设置终点'; };
-
-    // ---- 订单记录 ----
-    Object.keys(STATUS_LABEL).forEach(s => $('hStatus').insertAdjacentHTML('beforeend', `<option value="${s}">${STATUS_LABEL[s]}</option>`));
-
-    async function loadHistory(page) {
-      if (!passenger) { $('histList').innerHTML = '<div class="muted">请先选择身份</div>'; return; }
-      histPage = page;
-      const q = new URLSearchParams({ passengerId: passenger.id, page, size: 10 });
-      if ($('hStatus').value) q.set('status', $('hStatus').value);
-      const from = dayStartTs($('hFrom').value), to = dayEndTs($('hTo').value);
-      if (from) q.set('from', from);
-      if (to) q.set('to', to);
-      try {
-        const res = await api('GET', '/api/orders/query?' + q);
-        $('histList').innerHTML = historyRowsHtml(res.items);
-        bindHistoryRows($('histList'), oid => openOrderDetail(oid, { userId: passenger.id }));
-        renderPager($('histPager'), res.page, res.size, res.total, loadHistory);
-        const paid = await api('GET', '/api/orders/query?' + new URLSearchParams({ passengerId: passenger.id, status: 'PAID', page: 1, size: 100 }));
-        const spend = paid.items.reduce((s, o) => s + (o.actualFee || 0), 0);
-        const today = paid.items.filter(o => o.paidAt >= dayStartTs(fmtDateInput())).length;
-        $('histStats').innerHTML = `
-          <div class="stat"><div class="n">${res.total}</div><div class="l">总订单</div></div>
-          <div class="stat"><div class="n green">${yuan(spend)}</div><div class="l">累计消费（近 ${paid.items.length} 笔已支付）</div></div>
-          <div class="stat"><div class="n amber">${today}</div><div class="l">今日完成</div></div>`;
-      } catch (e) { toast(e.message, 'err'); }
-    }
-    $('hSearch').onclick = () => loadHistory(1);
-
-    // ---- 钱包流水 ----
-    Object.keys(BIZ_LABEL).forEach(b => $('wBiz').insertAdjacentHTML('beforeend', `<option value="${b}">${BIZ_LABEL[b]}</option>`));
-
-    async function loadWalletLedger(page) {
-      if (!passenger) return;
-      walletPage = page;
-      const q = new URLSearchParams({ page, size: 10 });
-      if ($('wBiz').value) q.set('bizType', $('wBiz').value);
-      try {
-        const res = await api('GET', `/api/wallets/${passenger.id}/ledger?` + q);
-        $('walletLedger').innerHTML = ledgerRowsHtml(res.items);
-        renderPager($('walletPager'), res.page, res.size, res.total, loadWalletLedger);
-      } catch (e) { toast(e.message, 'err'); }
-    }
-    $('wSearch').onclick = () => loadWalletLedger(1);
-
-    // 充值幂等键：同一笔意图重试复用（服务端防重），成功或金额变更后才换新键
-    let topupPending = null;
-    $('btnTopup').onclick = async () => {
-      if (!passenger) return toast('请先选择身份', 'warn');
-      const v = parseFloat($('topupAmount').value);
-      if (!(v > 0)) return toast('充值金额需大于 0', 'warn');
-      const amount = Math.round(v * 100);
-      const btn = $('btnTopup');
-      btn.disabled = true;
-      if (!topupPending || topupPending.amount !== amount) {
-        topupPending = { amount, bizNo: 'TOPUP-' + passenger.id + '-' + crypto.randomUUID().replace(/-/g, '') };
-      }
-      try {
-        await api('POST', '/api/wallets/topup', { userId: passenger.id, amount, bizNo: topupPending.bizNo });
-        topupPending = null;
-        refreshWallet(); loadWalletLedger(walletPage); toast('充值成功', 'ok');
-      } catch (e) {
-        if (!e.status) { toast('网络异常，充值结果确认中，重试不会重复入账', 'warn'); refreshWallet(); }
-        else { topupPending = null; toast(e.message, 'err'); }
-      } finally { btn.disabled = false; }
-    };
-    document.querySelectorAll('[data-amt]').forEach(b => b.onclick = () => { $('topupAmount').value = b.dataset.amt; });
-
-    $('autoPayToggle').onchange = async () => {
-      if (!passenger) { $('autoPayToggle').checked = false; return toast('请先选择身份', 'warn'); }
-      const enabled = $('autoPayToggle').checked;
-      try {
-        passenger = await api('POST', `/api/passengers/${passenger.id}/auto-pay?enabled=${enabled}`);
-        toast(enabled ? '已开启免密自动扣款' : '已关闭免密自动扣款', 'ok');
-      } catch (e) { $('autoPayToggle').checked = !enabled; toast(e.message, 'err'); }
-    };
-
-    // ---- 初始化 ----
-    map = new MapView($('map'), p => {
-      setPoint(mode, p.lat, p.lng, mode === 'origin' ? '地图起点' : '地图终点');
-      $(mode === 'origin' ? 'originPreset' : 'destPreset').value = '';
-    });
-    fillPresetSelect($('originPreset')); fillPresetSelect($('destPreset'));
-    bindPreset('originPreset', 'origin'); bindPreset('destPreset', 'dest');
-    paintServiceBtns();
-
-    (async () => {
-      const saved = localStorage.getItem('ride.passengerId');
-      if (saved) {
-        try { selectPassenger(await api('GET', '/api/passengers/' + saved)); return; } catch { /* 身份失效 */ }
-      }
-      identityModal().catch(e => toast(e.message, 'err'));
-    })();
-
-    // 周期兜底同步：钱包/订单/司机位置/轨迹（推送丢失时以 DB 为准）。
-    setInterval(() => { if (passenger) refreshWallet(); }, 8000);
-    setInterval(async () => {
-      if (!order || !driverPos && !['ACCEPTED', 'ARRIVED', 'IN_PROGRESS'].includes(order.status)) return;
-      if (!order.driverId || !['ACCEPTED', 'ARRIVED', 'IN_PROGRESS'].includes(order.status)) return;
-      try {
-        const loc = await api('GET', '/api/locations/' + order.driverId);
-        if (loc && loc.lat != null) { driverPos = { lat: loc.lat, lng: loc.lng }; drawMarkers(); }
-        if (order.status === 'IN_PROGRESS') {
-          const track = await api('GET', '/api/locations/track/' + order.id);
-          if (track && track.length > 1) map.setPath(track, '#60a5fa');
-        }
-      } catch { /* ignore */ }
-    }, 4000);
-    setInterval(() => { if (order && ACTIVE_STATUSES.includes(order.status)) refreshOrder(order.id); }, 6000);
-  </script>
+// ---- init ----
+map=new MapView($('map'),p=>pickOnMap(p));
+paintSvc();
+(async()=>{
+  const saved=localStorage.getItem('ride.passengerId');
+  if(saved){try{selectPassenger(await api('GET','/api/passengers/'+saved));return;}catch{}}
+  identityModal().catch(e=>toast(e.message,'err'));
+})();
+setInterval(()=>{if(passenger)refreshWallet();},8000);
+setInterval(async()=>{
+  if(!order||!order.driverId||!['ACCEPTED','ARRIVED','IN_PROGRESS'].includes(order.status))return;
+  try{
+    const loc=await api('GET','/api/locations/'+order.driverId);
+    if(loc&&loc.lat!=null){driverPos={lat:loc.lat,lng:loc.lng};drawMarkers();updateEta();guardTrip();}
+    if(order.status==='IN_PROGRESS'){const track=await api('GET','/api/locations/track/'+order.id);if(track&&track.length>1)map.setPath(track,'#10aeff');}
+  }catch{}
+},4000);
+setInterval(()=>{if(order&&ACTIVE_STATUSES.includes(order.status))refreshOrder(order.id);},6000);
+setInterval(()=>{if(passenger)loadNotifications();},15000);
+setInterval(loadCampaign,20000);loadCampaign();
+// ---- 无障碍/多语言 ----
+let lang='zh';
+const I18N={en:{call:'Call a ride',search:'Where to?',home:'Home',company:'Company',addr:'Addresses',gps:'Locate',orders:'Trips',wallet:'Wallet',me:'Me',origin:'Set pickup',dest:'Set drop-off'}};
+function applyI18n(){
+  const d=I18N[lang]||{};
+  $('btnCall').textContent=d.call||'呼叫车辆';
+  $('searchDestTxt').textContent=dest?dest.name:(d.search||'你要去哪儿？');
+  if(!origin)$('originTxt').textContent=d.origin||'点击设置起点';
+  if(!dest)$('destTxt').textContent=d.dest||'点击设置终点';
+  document.querySelectorAll('.bottomnav button')[1].lastChild.textContent=d.orders||'订单';
+  document.querySelectorAll('.bottomnav button')[2].lastChild.textContent=d.wallet||'钱包';
+  document.querySelectorAll('.bottomnav button')[3].lastChild.textContent=d.me||'我的';
+}
+</script>
 </body>
 </html>

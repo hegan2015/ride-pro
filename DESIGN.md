@@ -1052,3 +1052,68 @@ ops-pro Registry：mysql usedBy +ride-pro（ride_* 按域分库），新增 `zoo
 - **浏览器三端**（evaluate_script 隔离驱动）：乘客 P1 钱包 ¥5387.80+迁移流水渲染、司机 D1 收入 ¥199.17+11-17 提现记录、管理端账面守恒/outbox 0/服务健康（registry zk:// 探针正常），WS 均实时在线。
 - **ops 启停实测**：停 zookeeper-ride → gateway registry.ok=false 正确降级 → 启动恢复 allOk；经 ops 停/启 ride 回归**内嵌默认模式**（10 进程、P1=341336 恰为 H2 冻结快照值，证明读 H2 而非 MySQL）；恢复 docker 后 P1=538780、mirror 0/0、账面守恒。
 - **联调修复记录**：① pp 并行 Docker 迁移重新播种致会员名漂移（M2 不再叫 P1），ride 旧映射按名找不到 pp 账户 → 用户拍板删 ride 侧 6 行旧映射（D1/D2/D3/P1/P2，备份 ~/.config/ride-pro/pp-account-mapping-backup-1941.sql，保留 SYS_PLATFORM→商户 A1），懒开户自动重建后 24/24；② verify F 段重启 pp 原不带 --docker 会退回 local → 脚本新增 `pp_docker_mode()` 探测（ps 命令行 -Dspring.profiles.active / 环境变量）自动继承；③ ops stop 超时 60→240s（见 §20.5）；④ pp 商户 appSecret 漂移致签名 400 → ride config/payment-pro.properties 对齐 pp 库值。
+
+## 21. 司乘端体验升级（v1.9.0，对标滴滴）
+
+### 21.1 支撑域 ride-support
+新增第 9 个业务域（Dubbo 20910，H2 `data/support` / MySQL `ride_support` 双模式），承载体验与运营层公共能力，交易核心仍在原有各域：
+- 表：poi / address / coupon_template / coupon / safety_contact / safety_event / support_config / admin_user / audit_log / invoice / member / im_message / notification / driver_doc / ticket_link。
+- 契约：`SupportFacade`（ride-facade/support），网关暴露 `/api/support/*`（司乘）与 `/api/admin/support/*`（管理，受 X-Admin-Token 保护，操作写审计并带 X-Admin-User）。
+- 种子：8 个 POI 地标（含拼音别名）、9 项默认配置、默认管理员 admin/admin123（SHA-256 存储，角色 ADMIN/OPS/FINANCE/SUPPORT）。
+- MySQL 序列：`deploy/mysql-init.sql` 增 ride_support 段（nextval 函数），建库/授权一次性执行。
+
+### 21.2 三端前端升级（单文件 H5，零外部依赖）
+- **乘客端**：地图首页+底部抽屉叫车；POI 搜索联想/常用地址(家/公司)/快捷回家去公司；分车型实时预估+多车型接力呼叫（首选无应答自动切换备选）；优惠券选择/领券中心；司机卡片+接驾 ETA+联系司机 IM(号码保护中转)；安全中心（紧急联系人/SOS/录音/分享/110）；行程偏航守护；标签评价入口、投诉工单(转 cs-pro)、发票、会员积分、消息中心、长辈模式。
+- **司机端**：出车/收车大按钮+出车确认；听单偏好(车型/最远接驾/顺路)；语音播报新单(浏览器 TTS)；邀约卡倒计时+抢单/拒绝；导航演示(自动驶向目标+轨迹)；到达等待计时；结算收入(80%)；收入趋势图/服务分分项/奖励任务(积分)；合规证件提交审核；疲劳提醒(连续在线>4h)；热区/接单指引；联系乘客 IM；紧急求助。
+- **管理端**：在原 6 页签基础上新增 8 页签——双账本镜像(统计/DEAD 重放/销账关闭)、用户与司机(列表+证件准入审核)、配置中心、优惠券(模板/已发券)、风控安全(告警总览+安全事件处置)、客服工单(ride linkage+cs 深链)、权限审计(RBAC 登录/管理员/操作审计)、报表趋势(近 7 日订单/GMV 双柱图+订单 CSV)。
+
+### 21.3 客服配套（cs-pro）
+乘客投诉经 `CsTicketClient` 以 X-Open-Key 签名转 cs-pro `POST /api/open/tickets`（requestId 幂等、source=ride-pro、类别映射到 cs 限定枚举）；cs 不可达时本地 linkage 受理并通知"恢复后自动同步"。cs-pro 侧新增 open 收单/回查端点、admin 工单页签、agent 工单池 ride 上下文（见 cs-pro README §7.1）。ride 侧 open key 存于 support_config `support.csOpenKey`（管理端脱敏显示）。
+
+### 21.4 验证记录（2026-11-19，v1.9.0）
+- **单测 41/41 全绿**（common/pricing/order/payment），全模块 clean package 通过（JDK corretto-18）。
+- **支撑域闭环 curl**：POI 搜索/配置脱敏/RBAC 登录/券模板创建→发券→最优券→核销/安全事件/IM/工单离线降级与在线转发（cs T27，source=ride-pro）。
+- **行程端到端**：O30 叫车→抢单→到达→开始→结束→支付→PAID；期间 pp 并行重启致镜像短暂 PENDING，恢复后自动续传确认（mirror pending0/dead0），验证两阶段续传韧性。
+- **浏览器三端**（evaluate_script 驱动）：乘客搜索→报价→我的/券/安全/钱包余额联动；司机收入图表/服务分/任务/证件弹层；管理端 8 新页签真实数据加载+报表图表渲染；无 console 报错。
+- **已知边界**：真实地图瓦片/导航/虚拟号拨打/录音为演示联动（事件落库供管理端处置），未接外部 SDK；pp 重播种致 D2/D3/P2 双账本基线漂移（pp 余额 20000 vs 期望 40000）属并行会话数据问题，待对齐，非本次升级引入。
+
+### 21.5 第二/三批 P0/P1 补齐（2026-11-19 续）
+- **标签化评价+匿名**：RatingRequest/RatingDTO/order_rating 增 tags/anonymous；common.js ratingModalTags（星级+标签 chips+匿名）；司乘端接入；ratingsHtml 展示标签/匿名。修复 RatingMapper 派生表缺别名（MySQL 方言，H2 容忍）。
+- **司乘封禁管理**：passenger/driver 增 blocked；PassengerFacade/DriverFacade.setBlocked；司机封禁强制下线、出车/叫车服务端拦截；管理端用户/司机表封禁按钮。
+- **RBAC 角色拦截**：SupportFacade.adminByUsername；AdminSupportController 按 X-Admin-User 角色拦截（配置/管理员/证件审核=ADMIN，工单/安全事件=ADMIN|SUPPORT，券模板=ADMIN|OPS），未知账号拒绝（403 A0301）。
+- **配置真正生效**：订单域读 support config——取消费 cancel.feeAmount/freeWindowSec、派单 dispatch.mode/radiusKm/offerTtlSec、司机等待补偿 cancel.freeWaitSec；计价域读 pricing.<svc>.baseFee/baseKm/perKmFee/perMinFee/minFare 与 pricing.surgeEnabled（字段注入、不可达回落本地默认，单测不受影响）。实测 fee 300→500、baseFee 1300→2000 生效。
+- **多车型真·同呼（服务端接力）**：CallRequest.serviceTypes；ride_order.fallback_types；超轮次无应答自动 switchService 接力备选（重新计价+重置派单+SERVICE_FALLBACK 推送），无备选才 EXPIRED。实测 PREMIER→EXPRESS 接力成功。
+- **修改目的地**：OrderFacade.modifyDest（ACCEPTED/ARRIVED/IN_PROGRESS 重新计价更新预估+DEST_CHANGED 推送）；乘客端「改目的地」入口。实测预估 3028→3922。
+- **司机等待超时补偿**：ARRIVED 超 freeWaitSec 后司机取消向乘客收取消费补偿司机。实测 fee=300。
+- **司机口碑/等级/消息/证件到期**：OrderFacade.driverRatings 聚合乘客评价；司机端我的口碑/等级权益/消息中心/证件到期提醒/自动抢单/邀约方向预览。
+- **乘客搜索历史/上车点推荐/动态调价标签**：localStorage 搜索历史 chips；最近地标上车点推荐采纳；peakRate>1 显示高峰系数标签。
+- **管理端批量处置/对账报表**：订单多选+批量强制取消/批量全额退款；报表页增账面核对对账表。
+- **验证**：41/41 单测、verify-integration 24/24（两批复跑）、上述 curl 闭环与浏览器三端抽查全过。
+
+### 21.6 第四批 P1/P2 扫尾（2026-11-19 续）
+- **车型扩充+拼车**：pricing 增 CARPOOL/TEHUI/YOUXIANG/LUXURY 费率；派单与 accept 统一 serviceMatches（拼车/特惠→快车司机，优享/豪华→专车司机）；乘客端 7 车型多选同呼。实测 CARPOOL 报价 1888、快车司机接拼车单成功。
+- **舒适偏好/加价调度/支付渠道**：order 增 comfort/tip_fee/pay_channel；CallRequest 携带；完单加价经 payment transfer 划转司机（TIP_CREDIT/TIP_DEBIT 流水）；pay?channel= 标记渠道（非钱包为演示标记）。实测 tip=500 落账、channel=ALIPAY。
+- **打赏**：乘客 PAID 后打赏 ¥5 经 /api/wallets/transfer（TIP）划转司机。
+- **退款审批流**：support refund_request 表 + 申请/审批端点；批准即执行订单域退款并置 EXECUTED；管理端订单详情「走审批退款」+ 审批列表批准/驳回。实测批准后退 100 落账。
+- **排队信息/GPS/剩余 ETA**：派单轮次+等待时长展示；navigator.geolocation 真实 GPS 设起点；行程中剩余里程/ETA 客户端计算。
+- **真实录音**：司乘 MediaRecorder 麦克风录音（浏览器原生，零依赖），安全中心/导航设置可回放；事件落库。
+- **司机安全/运营**：偏航检测、超速提醒、导航转向提示、出车人脸核验（演示确认+事件）、安全培训考试（≥2/3 通过+积分）、充电/加油 POI 导航、机场蓄车池排队位次、邀请司机积分、高峰时段奖。
+- **乘客营销/无障碍/多语言**：活动 banner（support.campaign.* 配置驱动）、邀请有礼积分、高对比度无障碍模式、中英切换（关键文案）。
+- **管理端**：实时运力大屏（在线司机位置 5s 刷新）、活动配置卡、退款审批列表。
+- **验证**：41/41 单测、verify-integration 24/24（三批复跑）、curl 闭环（拼车/加价/渠道/审批/能源 POI）+ 浏览器三端抽查全过。
+- **剩余边界（需外部 SDK/真实通道，未接）**：真实地图瓦片、真实接驾/送驾导航 SDK、虚拟号真实拨打、微信/支付宝/银行卡真实收单、人脸核验活体 SDK、城市多城市开通、报表定时订阅。其余 P0/P1/P2 均已落地。
+
+### 21.7 地图底图高德化（2026-11-19 续）
+- **拍板**：「地图瓦片不收费就接高德，其他先不做」。栅格瓦片免费、无需 key，故落地；官方 JS API/导航 SDK 需注册 key（个人免费配额、商用需授权）本次不接。
+- **MapView 升级**（common.js，各页零改动）：高德免 key 栅格瓦片底图（webrd0X.is.autonavi.com，style=8 浅色路网）+ Web Mercator 投影替换原线性 bbox 投影；按 canvas 尺寸自动选 zoom（3–17）并居中 BBOX；retina 降采样保清晰；`crossOrigin=anonymous`（瓦片带 `Access-Control-Allow-Origin: *`，canvas 不被 taint，可像素读回）；模块级瓦片缓存跨实例复用；瓦片加载失败回退原网格底图（离线零依赖仍可运行）；右下角 © 高德地图 attribution。标记/轨迹/点击取坐标 API 保持不变。
+- **覆盖四面**：乘客首页地图、司机首页地图、管理端实时运力大屏、订单抽屉轨迹小地图（行程分享页同 MapView）。
+- **验证**：41/41 单测、verify-integration 24/24；浏览器结构化验证（面板隐藏改像素/状态读回）：乘客 35/35 瓦片 z11、467 种颜色（高德浅色路网配色）、投影往返精确、点击取坐标=BBOX 中心；司机 35/35；大屏 18/18 z10 + 9 个司机标记；抽屉 18/18 + 轨迹折线；应用无 console 错。
+- **配套（pp 鉴权升级适配）**：pp 并行会话上线控制台 Bearer 会话鉴权（/api/** 除 health/login/logout 均需登录+权限点）。verify-integration.py 补 pp 登录态：口令读 `PP_CONSOLE_PASSWORD` 或 `~/.config/ride-pro/pp-console.env`（600，仓库不落口令），全部 PAY 请求带 `Authorization: Bearer`。ride→pp 镜像走 /openapi HMAC 独立链，不受控制台鉴权影响（双账本红线完好）。
+- **剩余边界更新**：真实地图瓦片已接（免费栅格底图）；仍余真实导航 SDK、虚拟号真实拨打、真实收单、活体人脸 SDK、多城市开通、报表定时订阅。
+
+### 21.8 地图点选定位详细位置 + 真实地名（2026-11-19 续）
+- **需求**：地图选取起终点时放大定位到详细位置，并把「地图起点/地图终点」改为真实地名。
+- **MapView 交互升级**：点击取点自动 `focus(lat,lng,16)` 放大到街道级；新增画布控件 +/−/⌂（缩放/复位全城 BBOX）与滚轮以光标为锚缩放（zoom 3–18）；控件命中优先于取点点击；`resetView()` 回退_fit 视图。
+- **逆地理编码（免费免 key，多源回退）**：Photon（OSM，街道/POI/门牌级、中文）→ BigDataCloud（区级粗粒度，名称加「附近」）→ 本地 PRESETS 地标「XX附近」→ 坐标文案；6s AbortController 超时；成功缓存 + 并发去重、失败不缓存以便重试；离线零依赖兜底仍可用。通道实测：Photon 间歇可达、BigDataCloud 需跟随重定向、Nominatim 不可达、高德 restapi regeo 需 key（未用）——故做多源回退。
+- **乘客端**：点选/GPS 设点后先「定位中…」再回填真实地名到 originTxt/destTxt/searchDestTxt 与 origin/dest.name（下单携带真实地名）；**司机端**：点选后 home-top 新增 posPill「📍 真实地名」+ pos.name 同步。
+- **验证**：41/41 单测、verify-integration 24/24；浏览器实测：乘客点选 z16 + 30 张 z16 瓦片 + 「锦鸿阁」回填、滚轮 16→17、⌂ 复位 z11/center=null、终点双文案回填；司机 posPill「📍 锦鸿阁」；模拟 fetch 拒绝→「国贸附近」/「地图选点(坐标)」；恢复后街道门牌级「北四环西路辅路46号」；管理大屏 18/18 瓦片 + 3 控件 + 9 标记；无 console 错。

@@ -59,7 +59,7 @@ public class DispatchService {
                 .filter(loc -> !excluded.contains(loc.getDriverId()))
                 .filter(loc -> {
                     DriverDTO d = drivers.get(loc.getDriverId());
-                    return d != null && serviceType.equals(d.getServiceType() == null ? "EXPRESS" : d.getServiceType());
+                    return d != null && serviceMatches(serviceType, d.getServiceType() == null ? "EXPRESS" : d.getServiceType());
                 })
                 .sorted((a, b) -> Double.compare(
                         score(b, drivers.get(b.getDriverId()), radius),
@@ -106,6 +106,14 @@ public class DispatchService {
         result.setRadiusKm(request.getRadiusKm());
         result.setOfferedDriverIds(offeredIds);
         return result;
+    }
+
+    /** 车型→可接司机车型：拼车/特惠由快车接，优享/豪华由专车接，其余精确匹配。 */
+    private boolean serviceMatches(String orderType, String driverType) {
+        if (orderType.equals(driverType)) return true;
+        if ("CARPOOL".equals(orderType) || "TEHUI".equals(orderType)) return "EXPRESS".equals(driverType);
+        if ("YOUXIANG".equals(orderType) || "LUXURY".equals(orderType)) return "PREMIER".equals(driverType);
+        return false;
     }
 
     private double score(DriverLocationDTO loc, DriverDTO driver, double radius) {

@@ -18,5 +18,6 @@ CREATE TABLE IF NOT EXISTS driver (
     service_score DOUBLE,
     decline_count INT,
     updated_at    BIGINT,
+    blocked       BOOLEAN NOT NULL DEFAULT FALSE,
     INDEX idx_driver_status (status)
 );

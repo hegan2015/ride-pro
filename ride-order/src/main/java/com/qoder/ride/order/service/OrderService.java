@@ -86,6 +86,67 @@ public class OrderService {
     private PushFacade pushFacade;
     @DubboReference
     private LocationFacade locationFacade;
+    @DubboReference
+    private com.qoder.ride.facade.support.SupportFacade supportFacade;
+
+    /** 运营配置（ride-support）覆盖默认参数；support 不可达时回落本地默认，保证交易不中断。 */
+    private long cfgLong(String key, long def) {
+        try {
+            String v = supportFacade.allConfig().orThrow().get(key);
+            return v == null || v.isBlank() ? def : Long.parseLong(v.trim());
+        } catch (Exception e) {
+            return def;
+        }
+    }
+
+    private String cfgStr(String key, String def) {
+        try {
+            String v = supportFacade.allConfig().orThrow().get(key);
+            return v == null || v.isBlank() ? def : v.trim();
+        } catch (Exception e) {
+            return def;
+        }
+    }
+
+    /** 车型→可接司机车型：拼车/特惠由快车接，优享/豪华由专车接，其余精确匹配（与派单一致）。 */
+    private boolean serviceMatches(String orderType, String driverType) {
+        if (orderType.equals(driverType)) return true;
+        if ("CARPOOL".equals(orderType) || "TEHUI".equals(orderType)) return "EXPRESS".equals(driverType);
+        if ("YOUXIANG".equals(orderType) || "LUXURY".equals(orderType)) return "PREMIER".equals(driverType);
+        return false;
+    }
+
+    /** 多车型同呼：首选车型。 */
+    private String primaryServiceType(CallRequest request) {
+        if (request.getServiceTypes() != null && !request.getServiceTypes().isEmpty()) {
+            return request.getServiceTypes().get(0);
+        }
+        return request.getServiceType();
+    }
+
+    /** 多车型同呼：备选车型（逗号分隔）。 */
+    private String fallbackTypesOf(CallRequest request) {
+        if (request.getServiceTypes() == null || request.getServiceTypes().size() <= 1) return null;
+        return String.join(",", request.getServiceTypes().subList(1, request.getServiceTypes().size()));
+    }
+
+    /** 首选无应答超轮次时接力备选车型（重新计价+重置派单），无备选才过期。 */
+    private boolean tryServiceFallback(OrderDO order) {
+        String fb = order.getFallbackTypes();
+        if (fb == null || fb.isBlank()) return false;
+        String[] parts = fb.split(",");
+        String next = parts[0].trim();
+        String rest = parts.length > 1 ? String.join(",", java.util.Arrays.copyOfRange(parts, 1, parts.length)) : null;
+        FareDTO fare = quote(order.getOriginLat(), order.getOriginLng(), order.getDestLat(), order.getDestLng(), next, null, null);
+        if (orderMapper.switchService(order.getId(), fare.getServiceType(), fare.getTotalFee(), JsonUtil.toJson(fare), fare.getDistanceKm(), rest) == 0) {
+            return false;
+        }
+        log.info("多车型接力 orderId={} next={} rest={}", order.getId(), next, rest);
+        OrderDO fresh = require(order.getId());
+        pushPassenger(order.getPassengerId(), "SERVICE_FALLBACK", orderBrief(fresh));
+        dispatch(fresh, properties.getDefaultRadiusKm());
+        return true;
+    }
 
     public OrderDTO call(CallRequest request) {
         if (request.getPassengerId() == null || request.getPassengerId().isBlank()) {
@@ -102,8 +163,11 @@ public class OrderService {
         }
 
         PassengerDTO passenger = passengerFacade.get(request.getPassengerId()).orThrow();
+        if (Boolean.TRUE.equals(passenger.getBlocked())) {
+            throw new BizException(ResultCode.CONFLICT, "乘客已被封禁，禁止叫车: " + request.getPassengerId());
+        }
         FareDTO fare = quote(request.getOriginLat(), request.getOriginLng(),
-                request.getDestLat(), request.getDestLng(), request.getServiceType(), null, null);
+                request.getDestLat(), request.getDestLng(), primaryServiceType(request), null, null);
 
         long now = System.currentTimeMillis();
         OrderDO order = new OrderDO();
@@ -122,6 +186,9 @@ public class OrderService {
         order.setRequestId(requestId);
         order.setServiceType(fare.getServiceType());
         order.setFareJson(JsonUtil.toJson(fare));
+        order.setFallbackTypes(fallbackTypesOf(request));
+        order.setComfort(request.getComfort());
+        order.setTipFee(request.getTipFee() == null ? 0L : Math.max(0, request.getTipFee()));
         order.setDispatchRadius(properties.getDefaultRadiusKm());
         order.setLastDispatchAt(now);
         order.setCreatedAt(now);
@@ -159,7 +226,7 @@ public class OrderService {
         DriverDTO driver = driverFacade.get(driverId).orThrow();
         String orderService = order.getServiceType() == null ? "EXPRESS" : order.getServiceType();
         String driverService = driver.getServiceType() == null ? "EXPRESS" : driver.getServiceType();
-        if (!orderService.equals(driverService)) {
+        if (!serviceMatches(orderService, driverService)) {
             throw new BizException(ResultCode.CONFLICT, "服务类型不匹配: 订单" + orderService + " 司机" + driverService);
         }
         boolean grabbed = Boolean.TRUE.equals(driverFacade.casStatus(driverId, "ONLINE", "BUSY").orThrow());
@@ -231,6 +298,22 @@ public class OrderService {
         }
         log.info("行程结束 orderId={} driverId={} actualFee={} distanceKm={} durationMin={} trackPoints={}",
                 orderId, driverId, fare.getTotalFee(), distanceKm, durationMin, track.size());
+        long tip = order.getTipFee() == null ? 0 : order.getTipFee();
+        if (tip > 0) {
+            try {
+                TransferRequest t = new TransferRequest();
+                t.setFromUserId(order.getPassengerId());
+                t.setToUserId(driverId);
+                t.setAmount(tip);
+                t.setOrderId(orderId);
+                t.setBizType("TIP");
+                t.setRequestId("TIP-" + orderId);
+                paymentFacade.transfer(t);
+                log.info("加价调度费划转 orderId={} tip={}", orderId, tip);
+            } catch (Exception e) {
+                log.warn("加价调度费划转失败（平台让利）orderId={}: {}", orderId, e.getMessage());
+            }
+        }
         OrderDTO dto = get(orderId);
         Map<String, Object> data = orderBrief(order);
         data.put("actualFee", fare.getTotalFee());
@@ -246,6 +329,13 @@ public class OrderService {
      * 支付域事务与订单域事务之间的崩溃窗口由 reconcilePaid 对账兜底。
      */
     public OrderDTO pay(String orderId) {
+        return pay(orderId, null);
+    }
+
+    public OrderDTO pay(String orderId, String channel) {
+        if (channel != null && !channel.isBlank()) {
+            orderMapper.updatePayChannel(orderId, channel);
+        }
         OrderDO order = require(orderId);
         String key = payKey(orderId);
         IdempotentRecordDO existing = idempotentMapper.selectByRequestId(key);
@@ -324,11 +414,13 @@ public class OrderService {
         OrderDO order = require(orderId);
         long fee = 0;
         if (order.getDriverId() != null) {
+            long feeAmount = cfgLong("cancel.feeAmount", properties.getCancelFeeAmount());
+            long freeWindowMs = cfgLong("cancel.freeWindowSec", 120) * 1000;
             if ("ARRIVED".equals(order.getStatus())) {
-                fee = properties.getCancelFeeAmount();
+                fee = feeAmount;
             } else if ("ACCEPTED".equals(order.getStatus()) && order.getAcceptedAt() != null
-                    && System.currentTimeMillis() - order.getAcceptedAt() > properties.getCancelFreeWindowMs()) {
-                fee = properties.getCancelFeeAmount();
+                    && System.currentTimeMillis() - order.getAcceptedAt() > freeWindowMs) {
+                fee = feeAmount;
             }
         }
         if (orderMapper.cancel(orderId, reason, fee, System.currentTimeMillis()) == 0) {
@@ -376,12 +468,20 @@ public class OrderService {
         if (orderMapper.driverCancel(orderId, driverId, reason, properties.getDefaultRadiusKm(), declined) == 0) {
             throw new BizException(ResultCode.CONFLICT, "当前状态不可司机取消或非本司机: " + orderId);
         }
+        long waitFee = 0;
+        if ("ARRIVED".equals(order.getStatus()) && order.getArrivedAt() != null
+                && System.currentTimeMillis() - order.getArrivedAt() > cfgLong("cancel.freeWaitSec", 300) * 1000) {
+            waitFee = chargeCancelFee(order, cfgLong("cancel.feeAmount", properties.getCancelFeeAmount()));
+            orderMapper.updateCancelFee(orderId, waitFee);
+            log.info("司机等待超时补偿 orderId={} driverId={} fee={}", orderId, driverId, waitFee);
+        }
         safeSetDriverStatus(driverId, "ONLINE");
         log.info("司机取消订单 orderId={} driverId={} reason={}", orderId, driverId, reason);
         OrderDO fresh = require(orderId);
         Map<String, Object> data = orderBrief(fresh);
         data.put("cancelReason", reason);
         data.put("byDriver", true);
+        data.put("cancelFee", waitFee);
         pushPassenger(order.getPassengerId(), "DRIVER_CANCELLED", data);
         pushDriver(driverId, "ORDER_CANCELLED", data);
         dispatch(fresh, properties.getDefaultRadiusKm());
@@ -427,6 +527,8 @@ public class OrderService {
         rating.setRole(request.getRole());
         rating.setScore(request.getScore());
         rating.setComment(request.getComment());
+        rating.setTags(request.getTags());
+        rating.setAnonymous(Boolean.TRUE.equals(request.getAnonymous()));
         rating.setCreatedAt(now);
         try {
             ratingMapper.insert(rating);
@@ -641,6 +743,9 @@ public class OrderService {
         for (OrderDO order : orderMapper.selectByStatus("DISPATCHING")) {
             int round = order.getDispatchRound() == null ? 0 : order.getDispatchRound();
             if (round >= properties.getMaxDispatchRounds()) {
+                if (tryServiceFallback(order)) {
+                    continue;
+                }
                 if (orderMapper.expire(order.getId(), now) > 0) {
                     log.warn("无人接单超轮次，订单过期 orderId={} rounds={}", order.getId(), round);
                     pushPassenger(order.getPassengerId(), "ORDER_EXPIRED", orderBrief(order));
@@ -772,7 +877,9 @@ public class OrderService {
     }
 
     private void dispatch(OrderDO order, double radius) {
-        orderMapper.markDispatched(order.getId(), System.currentTimeMillis(), radius);
+        long cfgRadius = cfgLong("dispatch.radiusKm", 0);
+        double effRadius = cfgRadius > 0 ? Math.max(radius, cfgRadius) : radius;
+        orderMapper.markDispatched(order.getId(), System.currentTimeMillis(), effRadius);
         DispatchRequest request = new DispatchRequest();
         request.setOrderId(order.getId());
         request.setPassengerId(order.getPassengerId());
@@ -785,9 +892,9 @@ public class OrderService {
         request.setDestLng(order.getDestLng());
         request.setEstimateFee(order.getEstimateFee());
         request.setDistanceKm(order.getDistanceKm());
-        request.setRadiusKm(radius);
-        request.setMode(properties.getDispatchMode());
-        request.setOfferExpireAt(System.currentTimeMillis() + properties.getOfferTtlMs());
+        request.setRadiusKm(effRadius);
+        request.setMode(cfgStr("dispatch.mode", properties.getDispatchMode()));
+        request.setOfferExpireAt(System.currentTimeMillis() + cfgLong("dispatch.offerTtlSec", 15) * 1000);
         request.setServiceType(order.getServiceType());
         Set<String> excluded = splitIds(order.getDeclinedDriverIds());
         if (isAssignMode()) {
@@ -807,7 +914,7 @@ public class OrderService {
     }
 
     private boolean isAssignMode() {
-        return "assign".equalsIgnoreCase(properties.getDispatchMode());
+        return "assign".equalsIgnoreCase(cfgStr("dispatch.mode", properties.getDispatchMode()));
     }
 
     private FareDTO quote(double originLat, double originLng, double destLat, double destLng,
@@ -923,12 +1030,45 @@ public class OrderService {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
+    /** 行程中修改目的地：重新计价更新预估，推送司乘。 */
+    public OrderDTO modifyDest(String orderId, String destName, Double destLat, Double destLng) {
+        OrderDO order = require(orderId);
+        if (!"ACCEPTED".equals(order.getStatus()) && !"ARRIVED".equals(order.getStatus()) && !"IN_PROGRESS".equals(order.getStatus())) {
+            throw new BizException(ResultCode.CONFLICT, "当前状态不可修改目的地: " + order.getStatus());
+        }
+        requireCoord(destLat, destLng);
+        FareDTO fare = quote(order.getOriginLat(), order.getOriginLng(), destLat, destLng, order.getServiceType(), null, null);
+        if (orderMapper.updateDest(orderId, destName, destLat, destLng, fare.getDistanceKm(), fare.getTotalFee(), JsonUtil.toJson(fare)) == 0) {
+            throw new BizException(ResultCode.CONFLICT, "修改目的地失败: " + orderId);
+        }
+        OrderDO fresh = require(orderId);
+        log.info("修改目的地 orderId={} dest={} newEstimate={}", orderId, destName, fare.getTotalFee());
+        pushPassenger(order.getPassengerId(), "DEST_CHANGED", orderBrief(fresh));
+        if (order.getDriverId() != null) pushDriver(order.getDriverId(), "DEST_CHANGED", orderBrief(fresh));
+        return toDTO(fresh);
+    }
+
+    /** 司机口碑聚合：近期已完成订单的乘客评价（最多 50 条）。 */
+    public List<RatingDTO> driverRatings(String driverId) {
+        List<RatingDTO> out = new java.util.ArrayList<>();
+        for (OrderDO o : orderMapper.selectByDriver(driverId)) {
+            if (o.getActualFee() == null) continue;
+            for (RatingDO r : ratingMapper.selectByOrder(o.getId())) {
+                if ("passenger".equals(r.getRole())) out.add(toRatingDTO(r));
+            }
+            if (out.size() >= 50) break;
+        }
+        return out;
+    }
+
     private RatingDTO toRatingDTO(RatingDO rating) {
         RatingDTO dto = new RatingDTO();
         dto.setOrderId(rating.getOrderId());
         dto.setRole(rating.getRole());
         dto.setScore(rating.getScore());
         dto.setComment(rating.getComment());
+        dto.setTags(rating.getTags());
+        dto.setAnonymous(Boolean.TRUE.equals(rating.getAnonymous()));
         dto.setCreatedAt(rating.getCreatedAt());
         return dto;
     }
@@ -954,6 +1094,9 @@ public class OrderService {
         dto.setRequestId(order.getRequestId());
         dto.setCancelReason(order.getCancelReason());
         dto.setServiceType(order.getServiceType() == null ? "EXPRESS" : order.getServiceType());
+        dto.setComfort(order.getComfort());
+        dto.setTipFee(order.getTipFee() == null ? 0L : order.getTipFee());
+        dto.setPayChannel(order.getPayChannel());
         if (order.getFareJson() != null) {
             try {
                 dto.setFare(JsonUtil.fromJson(order.getFareJson(), FareDTO.class));

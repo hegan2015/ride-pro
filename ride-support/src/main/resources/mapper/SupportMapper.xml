@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.qoder.ride.support.mapper.SupportMapper">
+    <select id="nextId" databaseId="h2" resultType="long">SELECT NEXT VALUE FOR seq_support</select>
+    <select id="nextId" databaseId="mysql" resultType="long">SELECT nextval('seq_support')</select>
+
+    <update id="upsertConfig" databaseId="h2">
+        MERGE INTO support_config KEY(cfg_key) VALUES(#{key}, #{value}, #{updatedAt})
+    </update>
+    <update id="upsertConfig" databaseId="mysql">
+        INSERT INTO support_config(cfg_key,cfg_value,updated_at) VALUES(#{key},#{value},#{updatedAt})
+        ON DUPLICATE KEY UPDATE cfg_value=#{value}, updated_at=#{updatedAt}
+    </update>
+</mapper>

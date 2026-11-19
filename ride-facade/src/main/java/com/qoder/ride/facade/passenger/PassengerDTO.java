@@ -16,5 +16,7 @@ public class PassengerDTO implements Serializable {
     private String phone;
     /** 免密自动扣款授权：行程结束宽限期后服务端自动支付。 */
     private Boolean autoPay;
+    /** 管理端封禁标记：禁止叫车。 */
+    private Boolean blocked;
     private Long createdAt;
 }

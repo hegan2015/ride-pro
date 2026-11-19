@@ -58,4 +58,7 @@ public class OrderDTO implements Serializable {
     private Long cancelledAt;
     private Long expiredAt;
     private Long refundedAt;
+    private String comfort;
+    private Long tipFee;
+    private String payChannel;
 }

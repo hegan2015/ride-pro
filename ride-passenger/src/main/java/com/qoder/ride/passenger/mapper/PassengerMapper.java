@@ -25,4 +25,7 @@ public interface PassengerMapper {
 
     @Update("UPDATE passenger SET auto_pay=#{enabled} WHERE id=#{id}")
     int updateAutoPay(@Param("id") String id, @Param("enabled") boolean enabled);
+
+    @Update("UPDATE passenger SET blocked=#{blocked} WHERE id=#{id}")
+    int updateBlocked(@Param("id") String id, @Param("blocked") boolean blocked);
 }

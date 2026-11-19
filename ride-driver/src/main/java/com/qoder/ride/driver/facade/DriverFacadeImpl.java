@@ -62,4 +62,9 @@ public class DriverFacadeImpl implements DriverFacade {
             return null;
         });
     }
+
+    @Override
+    public Result<DriverDTO> setBlocked(String driverId, boolean blocked) {
+        return FacadeSupport.execute(() -> driverService.setBlocked(driverId, blocked));
+    }
 }

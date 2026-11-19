@@ -18,12 +18,12 @@ public interface OrderMapper {
 
     @Insert("INSERT INTO ride_order(id,passenger_id,passenger_name,driver_id,driver_name,driver_car_no,"
             + "origin_name,origin_lat,origin_lng,dest_name,dest_lat,dest_lng,distance_km,estimate_fee,actual_fee,"
-            + "status,request_id,cancel_reason,service_type,fare_json,actual_distance_km,actual_duration_min,"
+            + "status,request_id,cancel_reason,service_type,fallback_types,comfort,tip_fee,pay_channel,fare_json,actual_distance_km,actual_duration_min,"
             + "dispatch_round,offered_driver_ids,declined_driver_ids,cancel_fee,dispatch_radius,last_dispatch_at,"
             + "created_at,accepted_at,arrived_at,started_at,completed_at,paid_at,cancelled_at,expired_at,refunded_at) "
             + "VALUES(#{id},#{passengerId},#{passengerName},#{driverId},"
             + "#{driverName},#{driverCarNo},#{originName},#{originLat},#{originLng},#{destName},#{destLat},#{destLng},"
-            + "#{distanceKm},#{estimateFee},#{actualFee},#{status},#{requestId},#{cancelReason},#{serviceType},#{fareJson},"
+            + "#{distanceKm},#{estimateFee},#{actualFee},#{status},#{requestId},#{cancelReason},#{serviceType},#{fallbackTypes},#{comfort},COALESCE(#{tipFee},0),#{payChannel},#{fareJson},"
             + "#{actualDistanceKm},#{actualDurationMin},#{dispatchRound},#{offeredDriverIds},#{declinedDriverIds},"
             + "#{cancelFee},#{dispatchRadius},#{lastDispatchAt},#{createdAt},#{acceptedAt},#{arrivedAt},#{startedAt},"
             + "#{completedAt},#{paidAt},#{cancelledAt},#{expiredAt},#{refundedAt})")
@@ -81,6 +81,9 @@ public interface OrderMapper {
     @Update("UPDATE ride_order SET cancel_fee=#{fee} WHERE id=#{id}")
     int updateCancelFee(@Param("id") String id, @Param("fee") long fee);
 
+    @Update("UPDATE ride_order SET pay_channel=#{channel} WHERE id=#{id}")
+    int updatePayChannel(@Param("id") String id, @Param("channel") String channel);
+
     /** 司机取消：回 DISPATCHING 重新派单，清空司机快照，拒单名单追加该司机。 */
     @Update("UPDATE ride_order SET status='DISPATCHING', driver_id=NULL, driver_name=NULL, driver_car_no=NULL, "
             + "accepted_at=NULL, arrived_at=NULL, cancel_reason=#{reason}, dispatch_radius=#{radius}, "
@@ -92,6 +95,17 @@ public interface OrderMapper {
     /** 无人接单超轮次：DISPATCHING→EXPIRED 终态。 */
     @Update("UPDATE ride_order SET status='EXPIRED', expired_at=#{now} WHERE id=#{id} AND status='DISPATCHING'")
     int expire(@Param("id") String id, @Param("now") long now);
+
+    @Update("UPDATE ride_order SET service_type=#{serviceType}, estimate_fee=#{estimateFee}, fare_json=#{fareJson}, "
+            + "distance_km=#{distanceKm}, fallback_types=#{fallbackTypes}, dispatch_round=0, offered_driver_ids=NULL, declined_driver_ids=NULL "
+            + "WHERE id=#{id} AND status='DISPATCHING'")
+    int switchService(@Param("id") String id, @Param("serviceType") String serviceType, @Param("estimateFee") long estimateFee,
+                      @Param("fareJson") String fareJson, @Param("distanceKm") double distanceKm, @Param("fallbackTypes") String fallbackTypes);
+
+    @Update("UPDATE ride_order SET dest_name=#{destName}, dest_lat=#{destLat}, dest_lng=#{destLng}, distance_km=#{distanceKm}, "
+            + "estimate_fee=#{estimateFee}, fare_json=#{fareJson} WHERE id=#{id} AND status IN ('ACCEPTED','ARRIVED','IN_PROGRESS')")
+    int updateDest(@Param("id") String id, @Param("destName") String destName, @Param("destLat") double destLat, @Param("destLng") double destLng,
+                   @Param("distanceKm") double distanceKm, @Param("estimateFee") long estimateFee, @Param("fareJson") String fareJson);
 
     /** 管理端退款终态：PAID→REFUNDED（累计退满后由 finalizeRefund 调用）。 */
     @Update("UPDATE ride_order SET status='REFUNDED', cancel_reason=#{reason}, refunded_at=#{now} "

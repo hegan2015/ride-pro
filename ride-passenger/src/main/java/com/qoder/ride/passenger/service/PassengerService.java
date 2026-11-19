@@ -57,12 +57,20 @@ public class PassengerService {
         return passenger;
     }
 
+    public PassengerDTO setBlocked(String passengerId, boolean blocked) {
+        require(passengerId);
+        passengerMapper.updateBlocked(passengerId, blocked);
+        log.info("乘客封禁 passengerId={} blocked={}", passengerId, blocked);
+        return toDTO(require(passengerId));
+    }
+
     private PassengerDTO toDTO(PassengerDO passenger) {
         PassengerDTO dto = new PassengerDTO();
         dto.setId(passenger.getId());
         dto.setName(passenger.getName());
         dto.setPhone(passenger.getPhone());
         dto.setAutoPay(Boolean.TRUE.equals(passenger.getAutoPay()));
+        dto.setBlocked(Boolean.TRUE.equals(passenger.getBlocked()));
         dto.setCreatedAt(passenger.getCreatedAt());
         return dto;
     }

@@ -33,6 +33,11 @@ public class PassengerFacadeImpl implements PassengerFacade {
     }
 
     @Override
+    public Result<PassengerDTO> setBlocked(String passengerId, boolean blocked) {
+        return FacadeSupport.execute(() -> passengerService.setBlocked(passengerId, blocked));
+    }
+
+    @Override
     public Result<List<PassengerDTO>> list() {
         return FacadeSupport.execute(passengerService::list);
     }
