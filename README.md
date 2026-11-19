@@ -1119,3 +1119,9 @@ ops-pro Registry：mysql usedBy +ride-pro（ride_* 按域分库），新增 `zoo
 - **逆地理编码（免费免 key，多源回退）**：Photon（OSM，街道/POI/门牌级、中文）→ BigDataCloud（区级粗粒度，名称加「附近」）→ 本地 PRESETS 地标「XX附近」→ 坐标文案；6s AbortController 超时；成功缓存 + 并发去重、失败不缓存以便重试；离线零依赖兜底仍可用。通道实测：Photon 间歇可达、BigDataCloud 需跟随重定向、Nominatim 不可达、高德 restapi regeo 需 key（未用）——故做多源回退。
 - **乘客端**：点选/GPS 设点后先「定位中…」再回填真实地名到 originTxt/destTxt/searchDestTxt 与 origin/dest.name（下单携带真实地名）；**司机端**：点选后 home-top 新增 posPill「📍 真实地名」+ pos.name 同步。
 - **验证**：41/41 单测、verify-integration 24/24；浏览器实测：乘客点选 z16 + 30 张 z16 瓦片 + 「锦鸿阁」回填、滚轮 16→17、⌂ 复位 z11/center=null、终点双文案回填；司机 posPill「📍 锦鸿阁」；模拟 fetch 拒绝→「国贸附近」/「地图选点(坐标)」；恢复后街道门牌级「北四环西路辅路46号」；管理大屏 18/18 瓦片 + 3 控件 + 9 标记；无 console 错。
+
+### 21.9 接单后车辆行驶轨迹全程可见（2026-11-20）
+- **问题**：接单后看不到车辆行驶轨迹。根因三处：司机导航演示需手动开启（接单后车不动、无轨迹产生）；乘客端仅 IN_PROGRESS 画轨迹（接驾段无线）；司机端从不画轨迹线。
+- **修复（纯前端，服务端既有机制够用）**：司机 `grab`/`act('start')`/`loadActiveOrder`（重载续驶）自动 `startSim()` 驶向目标（接驾→上车点、开始→终点），导航按钮仍可手动停/开；司机端 3s 上报间隔同步拉 `trip_track` 画蓝色行驶线；乘客端 4s 轮询对 ACCEPTED/ARRIVED/IN_PROGRESS 全程画线（接驾绿 `#00b578`、行程蓝 `#10aeff`），订单终态清空轨迹与取景锁；两端订单激活时自动取景（乘客 z13 起终点/司机质心、司机 z14 当前位置+目标质心）；乘客恢复活跃订单时回填 origin/dest 与起终点标记/文案。location 域接单即逐点落 `trip_track` 并 WS 转发 DRIVER_LOCATION，无需改动。
+- **验证**：41/41 单测、verify-integration 24/24；端到端实测（专用身份 P6/D10，避开用户 Chrome 页签同身份并行操作）：接单自动驶向乘客（望京→国贸方向移动）、司机端画线 17 点、重载自动续驶、乘客接驾绿线 17 点 + z13 + 司机标记、开始行程后蓝线 39 点 = 落库 39 点、支付后轨迹清空；标记回填复验「起点/终点/司机」三标记 + 起终点文案；无 console 错。
+- **环境教训**：内置浏览器面板隐藏时 Chrome 节流 setInterval（模拟行驶/上报停摆），验证改手动泵送步点；真实用户页签可见不受影响。zsh 不对未加引号变量词分裂（`for + set --` 传坐标致 lat 整串 400）。

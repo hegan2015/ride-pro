@@ -280,7 +280,7 @@ const STEPS=['DISPATCHING','ACCEPTED','ARRIVED','IN_PROGRESS','COMPLETED','PAID'
 const SVC=[{k:'EXPRESS',n:'快车'},{k:'TEHUI',n:'特惠'},{k:'CARPOOL',n:'拼车'},{k:'YOUXIANG',n:'优享'},{k:'PREMIER',n:'专车'},{k:'LUXURY',n:'豪华'},{k:'TAXI',n:'出租车'}];
 let passenger=null,ws=null,order=null,map=null,rated=false;
 let origin=null,dest=null,mode='origin',serviceType='EXPRESS',svcSel=['EXPRESS'],fallbackSvcs=[];
-let driverPos=null,driverInfo=null,histPage=1,walletPage=1;
+let driverPos=null,driverInfo=null,histPage=1,walletPage=1,tripFocused=false;
 let quotes={},coupon=null,deviationRaised=false,recording=false;
 let cfSel=new Set(),payChannel='WALLET',mediaRec=null,recChunks=[],recUrl=null;
 const $=id=>document.getElementById(id);
@@ -366,6 +366,9 @@ function renderOrder(){
   $('orderView').style.display=has?'block':'none';
   $('btnCall').disabled=!!(has&&ACTIVE_STATUSES.includes(order.status));
   if(!has){drawMarkers();return;}
+  if(order.originLat!=null&&!origin){origin={lat:order.originLat,lng:order.originLng,name:order.originName||'起点'};$('originTxt').textContent=origin.name;}
+  if(order.destLat!=null&&!dest){dest={lat:order.destLat,lng:order.destLng,name:order.destName||'终点'};$('destTxt').textContent=dest.name;$('searchDestTxt').textContent=dest.name;}
+  drawMarkers();
   $('orderId').textContent=order.id;
   $('orderStatus').innerHTML=statusBadge(order.status);
   const idx=STEPS.indexOf(order.status);
@@ -901,11 +904,17 @@ paintSvc();
 })();
 setInterval(()=>{if(passenger)refreshWallet();},8000);
 setInterval(async()=>{
-  if(!order||!order.driverId||!['ACCEPTED','ARRIVED','IN_PROGRESS'].includes(order.status))return;
+  if(!order||!order.driverId||!['ACCEPTED','ARRIVED','IN_PROGRESS'].includes(order.status)){if(order&&map)map.setPath([]);tripFocused=false;return;}
   try{
     const loc=await api('GET','/api/locations/'+order.driverId);
     if(loc&&loc.lat!=null){driverPos={lat:loc.lat,lng:loc.lng};drawMarkers();updateEta();guardTrip();}
-    if(order.status==='IN_PROGRESS'){const track=await api('GET','/api/locations/track/'+order.id);if(track&&track.length>1)map.setPath(track,'#10aeff');}
+    const track=await api('GET','/api/locations/track/'+order.id);
+    if(track&&track.length>1)map.setPath(track,order.status==='IN_PROGRESS'?'#10aeff':'#00b578');
+    if(!tripFocused){
+      tripFocused=true;
+      const pts=[origin,dest,driverPos].filter(Boolean);
+      if(pts.length)map.focus(pts.reduce((s,p)=>s+p.lat,0)/pts.length,pts.reduce((s,p)=>s+p.lng,0)/pts.length,13);
+    }
   }catch{}
 },4000);
 setInterval(()=>{if(order&&ACTIVE_STATUSES.includes(order.status))refreshOrder(order.id);},6000);

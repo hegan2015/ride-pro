@@ -210,7 +210,7 @@ canvas.chart{width:100%;height:120px;background:#f8f9fc;border-radius:12px}
 
 <script src="common.js"></script>
 <script>
-let driver=null,ws=null,order=null,map=null,pos=null,rated=false;
+let driver=null,ws=null,order=null,map=null,pos=null,rated=false,simFocused=false;
 let simulating=false,simArrived=false,walletPage=1,onlineSince=null,waitSince=null;
 let voice=true,pref={svcs:['EXPRESS','PREMIER','TAXI'],maxKm:5,onway:false,autoGrab:false};
 const offers=new Map();
@@ -277,7 +277,7 @@ async function refreshWallet(){
   }catch{}
 }
 async function refreshDriver(){if(!driver)return;try{driver=await api('GET','/api/drivers/'+driver.id);setStatusBadge(driver.status);$('serviceScore').textContent=(driver.serviceScore??5).toFixed(2);}catch{}}
-async function loadActiveOrder(){if(!driver)return;const list=await api('GET','/api/orders?driverId='+driver.id);const a=list.find(o=>['ACCEPTED','ARRIVED','IN_PROGRESS','COMPLETED'].includes(o.status));if(a){order=a;rated=false;renderOrder();}}
+async function loadActiveOrder(){if(!driver)return;const list=await api('GET','/api/orders?driverId='+driver.id);const a=list.find(o=>['ACCEPTED','ARRIVED','IN_PROGRESS','COMPLETED'].includes(o.status));if(a){order=a;rated=false;renderOrder();startSim();}}
 // events
 function onEvent(msg){
   const d=msg.data||{};
@@ -326,7 +326,7 @@ setInterval(()=>{
   if(changed)renderOffers();
   else $('offers').querySelectorAll('.offer').forEach(el=>{const o=offers.get(el.dataset.oid);if(!o||!o.expireAt)return;const left=Math.max(0,o.expireAt-Date.now());el.querySelector('.offer-bar i').style.width=Math.min(100,left/15000*100)+'%';el.querySelector('.cd').textContent=Math.ceil(left/1000)+'s';});
 },500);
-async function grab(orderId){try{order=await api('POST',`/api/orders/${orderId}/accept?driverId=`+driver.id);offers.clear();renderOffers();rated=false;renderOrder();refreshDriver();}catch(e){offers.delete(orderId);renderOffers();toast('抢单失败：'+e.message,'err');}}
+async function grab(orderId){try{order=await api('POST',`/api/orders/${orderId}/accept?driverId=`+driver.id);offers.clear();renderOffers();rated=false;renderOrder();refreshDriver();startSim();toast('已接单，自动驶向乘客','ok');}catch(e){offers.delete(orderId);renderOffers();toast('抢单失败：'+e.message,'err');}}
 async function decline(orderId){try{await api('POST',`/api/orders/${orderId}/decline?driverId=`+driver.id);offers.delete(orderId);renderOffers();toast('已拒绝（影响派单评分）','info');}catch(e){toast(e.message,'err');}}
 async function refreshOrder(id){try{order=await api('GET','/api/orders/'+id);renderOrder();}catch{}}
 function renderOrder(){
@@ -357,7 +357,7 @@ function renderOrder(){
   }
   drawMarkers();
 }
-async function act(a){const btn=$('btnPrimary');btn.disabled=true;try{order=await api('POST',`/api/orders/${order.id}/${a}?driverId=`+driver.id);renderOrder();refreshDriver();if(a==='complete')stopSimulate();if(a==='arrive')waitSince=Date.now();}catch(e){toast(e.message,'err');renderOrder();}}
+async function act(a){const btn=$('btnPrimary');btn.disabled=true;try{order=await api('POST',`/api/orders/${order.id}/${a}?driverId=`+driver.id);renderOrder();refreshDriver();if(a==='complete')stopSimulate();if(a==='start')startSim();if(a==='arrive')waitSince=Date.now();}catch(e){toast(e.message,'err');renderOrder();}}
 async function rateOrder(){const r=await ratingModalTags('评价本次乘客',['守时','文明礼貌','沟通顺畅','爱护车辆']);if(!r)return;try{await api('POST',`/api/orders/${order.id}/rate`,{role:'driver',score:r.score,comment:r.comment,tags:r.tags,anonymous:r.anonymous});rated=true;renderOrder();toast('评价已提交','ok');}catch(e){toast(e.message,'err');}}
 $('btnDriverCancel').onclick=async()=>{const ok=await confirmDialog('确认取消？订单重新派给其他司机，频繁取消影响服务分。','确认取消');if(!ok)return;try{await api('POST',`/api/orders/${order.id}/driver-cancel?driverId=${driver.id}&reason=`+encodeURIComponent('司机主动取消'));order=null;waitSince=null;renderOrder();refreshDriver();stopSimulate();toast('已取消，重新派单','warn');}catch(e){toast(e.message,'err');}};
 $('btnDetail').onclick=()=>order&&openOrderDetail(order.id,{userId:driver&&driver.id});
@@ -366,7 +366,8 @@ $('btnNav').onclick=()=>$('btnSimulate').click();
 // simulate / nav
 function simulateTarget(){if(!order)return null;if(order.status==='ACCEPTED'||order.status==='ARRIVED')return{lat:order.originLat,lng:order.originLng};if(order.status==='IN_PROGRESS')return{lat:order.destLat,lng:order.destLng};return null;}
 function stopSimulate(){simulating=false;simArrived=false;$('btnSimulate').textContent='🧭 导航演示（自动驶向目标）';$('btnSimulate').className='ghost block';}
-$('btnSimulate').onclick=()=>{if(simulating)return stopSimulate();if(!simulateTarget())return toast('接单后才能导航','warn');simulating=true;simArrived=false;$('btnSimulate').textContent='⏹ 停止导航';$('btnSimulate').className='amber block';toast('导航演示开启：自动驶向目标并上报轨迹','info');speak('导航开始');};
+function startSim(){if(simulating||!order)return;if(!simulateTarget())return;simulating=true;simArrived=false;$('btnSimulate').textContent='⏹ 停止导航';$('btnSimulate').className='amber block';}
+$('btnSimulate').onclick=()=>{if(simulating)return stopSimulate();if(!simulateTarget())return toast('接单后才能导航','warn');startSim();toast('导航演示开启：自动驶向目标并上报轨迹','info');speak('导航开始');};
 setInterval(()=>{
   if(!simulating||!pos)return;const t=simulateTarget();if(!t)return stopSimulate();
   const dLat=t.lat-pos.lat,dLng=t.lng-pos.lng,dist=Math.sqrt(dLat*dLat+dLng*dLng);
@@ -661,7 +662,19 @@ map=new MapView($('map'),p=>{
   placeName(p.lat,p.lng).then(n=>{if(pos){pos.name=n;const pp=$('posPill');if(pp)pp.textContent='📍 '+n;drawMarkers();}});
 });
 (async()=>{const saved=localStorage.getItem('ride.driverId');if(saved){try{selectDriver(await api('GET','/api/drivers/'+saved));return;}catch{}}identityModal().catch(e=>toast(e.message,'err'));})();
-setInterval(reportLocation,3000);
+setInterval(async()=>{
+  await reportLocation();
+  if(!map)return;
+  if(order){
+    try{const t=await api('GET','/api/locations/track/'+order.id);if(t&&t.length>1)map.setPath(t,'#10aeff');}catch{}
+    if(!simFocused){
+      simFocused=true;
+      const tg=simulateTarget();
+      const pts=[pos,tg].filter(Boolean);
+      if(pts.length)map.focus(pts.reduce((s,p)=>s+p.lat,0)/pts.length,pts.reduce((s,p)=>s+p.lng,0)/pts.length,14);
+    }
+  } else {map.setPath([]);simFocused=false;}
+},3000);
 setInterval(()=>{if(driver){refreshDriver();refreshWallet();if(order)refreshOrder(order.id);}},6000);
 </script>
 </body>
