@@ -3,6 +3,9 @@ package com.qoder.ride.payment.facade;
 import com.qoder.ride.common.result.FacadeSupport;
 import com.qoder.ride.common.result.Result;
 import com.qoder.ride.facade.common.PageDTO;
+import com.qoder.ride.facade.payment.CashierPayDTO;
+import com.qoder.ride.facade.payment.CashierRequest;
+import com.qoder.ride.facade.payment.LedgerCorrectionRequest;
 import com.qoder.ride.facade.payment.LedgerEntryDTO;
 import com.qoder.ride.facade.payment.LedgerQuery;
 import com.qoder.ride.facade.payment.MirrorEventDTO;
@@ -23,6 +26,7 @@ import com.qoder.ride.payment.config.PaymentProperties;
 import com.qoder.ride.payment.dataobject.PaymentProNotifyDO;
 import com.qoder.ride.payment.mapper.MirrorOutboxMapper;
 import com.qoder.ride.payment.mapper.PaymentProNotifyMapper;
+import com.qoder.ride.payment.service.CashierService;
 import com.qoder.ride.payment.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +34,7 @@ import org.apache.dubbo.config.annotation.DubboService;
 import org.springframework.dao.DuplicateKeyException;
 
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @DubboService
@@ -37,6 +42,8 @@ import java.util.List;
 public class PaymentFacadeImpl implements PaymentFacade {
 
     private final PaymentService paymentService;
+    private final CashierService cashierService;
+    private final com.qoder.ride.payment.service.PaymentMonitor paymentMonitor;
     private final PaymentProNotifyMapper notifyMapper;
     private final MirrorOutboxMapper mirrorMapper;
     private final PaymentProperties properties;
@@ -191,5 +198,67 @@ public class PaymentFacadeImpl implements PaymentFacade {
     @Override
     public Result<Integer> closeMirror(String bizNo, String reason) {
         return FacadeSupport.execute(() -> paymentService.abandonMirror(bizNo, reason));
+    }
+
+    // ---------------- 收银台开放能力（additive，不改既有端点语义） ----------------
+
+    @Override
+    public Result<Map<String, Object>> cashierMethods(CashierRequest request) {
+        return FacadeSupport.execute(() -> cashierService.methods(request));
+    }
+
+    @Override
+    public Result<Map<String, Object>> cashierCodeCreate(CashierRequest request) {
+        return FacadeSupport.execute(() -> cashierService.codeCreate(request));
+    }
+
+    @Override
+    public Result<Map<String, Object>> cashierCodeParse(String code) {
+        return FacadeSupport.execute(() -> cashierService.codeParse(code));
+    }
+
+    @Override
+    public Result<Map<String, Object>> cashierCodeQuery(String code) {
+        return FacadeSupport.execute(() -> cashierService.codeQuery(code));
+    }
+
+    @Override
+    public Result<CashierPayDTO> cashierScanPay(CashierRequest request) {
+        return FacadeSupport.execute(() -> cashierService.scanPay(request));
+    }
+
+    @Override
+    public Result<Map<String, Object>> cashierVerify(CashierRequest request) {
+        return FacadeSupport.execute(() -> cashierService.verify(request));
+    }
+
+    @Override
+    public Result<CashierPayDTO> cashierPayVerified(CashierRequest request) {
+        return FacadeSupport.execute(() -> cashierService.payVerified(request));
+    }
+
+    @Override
+    public Result<Boolean> cashierPayPasswordSet(CashierRequest request) {
+        return FacadeSupport.execute(() -> cashierService.payPasswordSet(request));
+    }
+
+    @Override
+    public Result<Map<String, Object>> cashierSmsSend(CashierRequest request) {
+        return FacadeSupport.execute(() -> cashierService.smsSend(request));
+    }
+
+    @Override
+    public Result<Map<String, Object>> cashierReceipt(String orderId) {
+        return FacadeSupport.execute(() -> cashierService.receipt(orderId));
+    }
+
+    @Override
+    public Result<Map<String, Object>> correctLedger(LedgerCorrectionRequest request) {
+        return FacadeSupport.execute(() -> paymentService.correctLedger(request));
+    }
+
+    @Override
+    public Result<Map<String, Object>> rebaselineDualLedger() {
+        return FacadeSupport.execute(paymentMonitor::rebaseline);
     }
 }

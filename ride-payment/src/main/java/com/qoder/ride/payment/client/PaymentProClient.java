@@ -139,18 +139,87 @@ public class PaymentProClient {
         return call("trade.create", params).get("id").asText();
     }
 
-    public String tradePay(String ppOrderId, String accountId, String outTradeNo, String callbackUrl) {
+    public JsonNode tradePay(String ppOrderId, String accountId, String outTradeNo, String callbackUrl) {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("orderId", ppOrderId);
         params.put("method", "BALANCE");
         params.put("accountId", accountId);
         params.put("outTradeNo", outTradeNo);
         params.put("callbackUrl", callbackUrl);
-        return call("trade.pay", params).get("payment").get("id").asText();
+        return call("trade.pay", params).get("payment");
     }
 
     public JsonNode tradeQuery(String ppOrderId) {
         return call("trade.query", Map.of("orderId", ppOrderId));
+    }
+
+    // ---------------- 收银台开放能力（cashier.*，9 个商户方法） ----------------
+    // 复用同一套 HMAC 签名 / HTTPS 信任 / 超时 / 错误语义；入参扁平标量，null 不参与签名也不发送。
+
+    /** 支付方式渲染：orderId 必填，accountId 传入则做账户级可用性判定。 */
+    public JsonNode cashierMethods(String orderId, String accountId) {
+        return call("cashier.methods", params("orderId", orderId, "accountId", accountId));
+    }
+
+    /** 生成付款码（USER_PRESENTED 被扫 / MERCHANT_PRESENTED 主扫）；requestId 同键返回同一有效码。 */
+    public JsonNode cashierCodeCreate(String type, String accountId, String orderId, Long amount, String requestId) {
+        return call("cashier.code.create", params("type", type, "accountId", accountId,
+                "orderId", orderId, "amount", amount, "requestId", requestId));
+    }
+
+    /** 解析码（只读，不核销）。 */
+    public JsonNode cashierCodeParse(String code) {
+        return call("cashier.code.parse", params("code", code));
+    }
+
+    /** 查询码状态（ACTIVE/CONSUMED/EXPIRED + ttlSeconds 倒计时）。 */
+    public JsonNode cashierCodeQuery(String code) {
+        return call("cashier.code.query", params("code", code));
+    }
+
+    /** 扫码受理：核销 + 验证 + 幂等支付；主扫必填 payerAccountId。 */
+    public JsonNode cashierScanPay(String code, String requestId, String payerAccountId, String method,
+                                   String verifyToken, String cardNo, String callbackUrl) {
+        return call("cashier.scanPay", params("code", code, "requestId", requestId,
+                "payerAccountId", payerAccountId, "method", method, "verifyToken", verifyToken,
+                "cardNo", cardNo, "callbackUrl", callbackUrl));
+    }
+
+    /** 支付验证四型（PASSWORD/SMS/BIO/SMALL_AMOUNT_FREE），失败不受理支付、不扣款。 */
+    public JsonNode cashierVerify(String accountId, String orderId, Long amount, String verifyType,
+                                  String payPassword, String smsCode, String bioToken, String requestId) {
+        return call("cashier.verify", params("accountId", accountId, "orderId", orderId, "amount", amount,
+                "verifyType", verifyType, "payPassword", payPassword, "smsCode", smsCode,
+                "bioToken", bioToken, "requestId", requestId));
+    }
+
+    /** 验证前置受理（幂等）：BALANCE 同步受理→PROCESSING→SUCCESS，与 trade.pay 语义一致。 */
+    public JsonNode cashierPayVerified(String orderId, String requestId, String method, String accountId,
+                                       String verifyToken, String cardNo, String callbackUrl) {
+        return call("cashier.payVerified", params("orderId", orderId, "requestId", requestId, "method", method,
+                "accountId", accountId, "verifyToken", verifyToken, "cardNo", cardNo, "callbackUrl", callbackUrl));
+    }
+
+    /** 设置/重置支付口令（6 位数字）；口令只入不出，返回裸 boolean。 */
+    public boolean cashierPayPasswordSet(String accountId, String password, String oldPassword) {
+        return call("cashier.payPassword.set", params("accountId", accountId,
+                "password", password, "oldPassword", oldPassword)).asBoolean();
+    }
+
+    /** 发送短信验证码：默认掩码（smsCode=******），仅 sandbox=true 返沙箱明文（联调用）。 */
+    public JsonNode cashierSmsSend(String accountId, String orderId, Boolean sandbox) {
+        return call("cashier.sms.send", params("accountId", accountId, "orderId", orderId, "sandbox", sandbox));
+    }
+
+    /** 扁平参数装配：跳过 null（空串参与签名，故不传空串），保持插入序便于日志排查（签名内部再排序）。 */
+    private static Map<String, Object> params(Object... kv) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < kv.length; i += 2) {
+            if (kv[i + 1] != null) {
+                map.put(String.valueOf(kv[i]), kv[i + 1]);
+            }
+        }
+        return map;
     }
 
     private JsonNode call(String endpoint, Map<String, Object> params) {

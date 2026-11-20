@@ -1,0 +1,706 @@
+/*
+ * ride-pro 收银台 · 支付宝设计语言（仅作用于 .cs-overlay 作用域，不影响乘客端其它页面）
+ *
+ * 零外部依赖：无 @import、无外部字体、无 CDN 图标；图标全部内联 SVG（见 cashier.js）。
+ * 主色 #1677FF / 页面底 #F5F5F5 / 卡片纯白 12px 圆角 / 成功绿 #00B578。
+ * 移动端优先（375px 基准），底部留 safe-area-inset。
+ */
+
+.cs-overlay {
+  --ali: #1677FF;
+  --ali-d: #0E5FD8;
+  --ali-soft: #F0F6FF;
+  --ali-line: #B7D3FF;
+  --ali-off: #A9CBFF;
+  --cs-bg: #F5F5F5;
+  --cs-card: #FFFFFF;
+  --cs-text: #333333;
+  --cs-title: #1A1A1A;
+  --cs-sub: #999999;
+  --cs-line: #EEEEEE;
+  --cs-green: #00B578;
+  --cs-red: #FF3B30;
+  --cs-amber: #FF8F1F;
+  --cs-r: 12px;
+  --cs-shadow: 0 1px 6px rgba(0, 0, 0, .04);
+  --cs-ease: cubic-bezier(.25, .8, .35, 1);
+
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, .55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", system-ui, sans-serif;
+  color: var(--cs-text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 页面骨架 ---------- */
+.cs-panel {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  background: var(--cs-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: cs-page-in .26s var(--cs-ease);
+}
+@keyframes cs-page-in { from { transform: translateY(14px) } to { transform: none } }
+
+.cs-nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  padding: 0 6px;
+  background: #fff;
+  border-bottom: 1px solid var(--cs-line);
+}
+.cs-nav-t {
+  flex: 1;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--cs-title);
+  letter-spacing: .2px;
+}
+.cs-overlay .cs-icon-btn {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--cs-title);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background .2s var(--cs-ease), transform .2s var(--cs-ease);
+}
+.cs-overlay .cs-icon-btn:active { background: #F2F2F2; transform: scale(.92) }
+.cs-overlay .cs-icon-btn svg { width: 20px; height: 20px; display: block }
+
+.cs-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 12px 18px;
+}
+.cs-foot {
+  flex: none;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid var(--cs-line);
+}
+
+/* ---------- 通用元件 ---------- */
+.cs-overlay .cs-card {
+  background: var(--cs-card);
+  border-radius: var(--cs-r);
+  box-shadow: var(--cs-shadow);
+  padding: 14px;
+  margin: 0 0 10px;
+  border: 0;
+}
+.cs-sec {
+  font-size: 13px;
+  color: var(--cs-sub);
+  padding: 4px 4px 8px;
+}
+.cs-overlay .cs-kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #F5F5F5;
+}
+.cs-overlay .cs-kv:last-child { border-bottom: 0 }
+.cs-overlay .cs-kv .k { color: var(--cs-sub); flex: none }
+.cs-overlay .cs-kv .v { color: var(--cs-text); text-align: right; word-break: break-all }
+.cs-overlay .cs-kv .v.hi { color: var(--ali) }
+.cs-overlay .cs-kv .v.cut { color: var(--cs-red) }
+
+.cs-overlay button {
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.cs-overlay .cs-btn {
+  display: block;
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 24px;
+  background: var(--ali);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: .5px;
+  cursor: pointer;
+  transition: background .2s var(--cs-ease), transform .12s var(--cs-ease), opacity .2s var(--cs-ease);
+}
+.cs-overlay .cs-btn:active { background: var(--ali-d); transform: scale(.985) }
+.cs-overlay .cs-btn:disabled { background: var(--ali-off); color: #fff; cursor: not-allowed; transform: none }
+.cs-overlay .cs-btn.ghost {
+  background: #fff;
+  color: var(--cs-text);
+  border: 1px solid #E5E5E5;
+  font-size: 15px;
+  font-weight: 500;
+}
+.cs-overlay .cs-btn.ghost:active { background: #F7F7F7 }
+.cs-overlay .cs-btn.sm { height: 40px; border-radius: 20px; font-size: 15px }
+.cs-overlay .cs-btn + .cs-btn { margin-top: 10px }
+.cs-agree {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--cs-sub);
+}
+.cs-agree a, .cs-link { color: var(--ali); cursor: pointer; text-decoration: none }
+.cs-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 10px;
+}
+.cs-overlay .cs-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 0;
+  padding: 4px 2px;
+  color: var(--cs-sub);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.cs-overlay .cs-link-btn svg { width: 15px; height: 15px }
+.cs-overlay .cs-link-btn:active { color: var(--ali) }
+.cs-links .sep { width: 1px; height: 12px; background: #E5E5E5 }
+
+.cs-note, .cs-err, .cs-ok {
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  margin: 0 0 10px;
+  line-height: 1.55;
+}
+.cs-note { background: var(--ali-soft); color: var(--ali-d) }
+.cs-err { background: #FFF0EF; color: var(--cs-red) }
+.cs-ok { background: #E8F8F2; color: #00926A }
+
+/* ---------- 视图 1：收银台主页 ---------- */
+.cs-order {
+  padding: 4px 6px 12px;
+  text-align: center;
+}
+.cs-order-route {
+  font-size: 13px;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.cs-order-route .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ali); flex: none }
+.cs-order-route .dot.end { background: var(--cs-amber) }
+.cs-order-route .arrow { color: #CCC }
+.cs-order-no { font-size: 11.5px; color: var(--cs-sub); margin-top: 3px }
+
+.cs-amount { text-align: center; padding: 20px 14px 12px }
+.cs-amount-label { font-size: 13px; color: var(--cs-sub) }
+.cs-amount-num {
+  margin: 6px 0 2px;
+  color: var(--cs-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1.1;
+}
+.cs-amount-num .cur { font-size: 24px; font-weight: 600 }
+.cs-amount-num .num { font-size: 42px; letter-spacing: -.5px }
+.cs-amount-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--cs-sub);
+  background: transparent;
+  border: 0;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.cs-amount-toggle svg { width: 12px; height: 12px; transition: transform .2s var(--cs-ease) }
+.cs-amount-toggle.open svg { transform: rotate(180deg) }
+.cs-amount-rows {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #F5F5F5;
+  text-align: left;
+  animation: cs-expand .22s var(--cs-ease);
+}
+.cs-amount-rows[hidden] { display: none }
+@keyframes cs-expand { from { opacity: 0; transform: translateY(-4px) } to { opacity: 1; transform: none } }
+
+.cs-methods { padding: 2px 0 }
+.cs-m {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  cursor: pointer;
+  position: relative;
+  transition: background .18s var(--cs-ease);
+}
+.cs-m + .cs-m::before {
+  content: '';
+  position: absolute;
+  left: 50px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: #F5F5F5;
+}
+.cs-m:active { background: #F7F7F7 }
+.cs-m.on { background: var(--ali-soft) }
+.cs-m.on:active { background: #E7F0FF }
+.cs-m-ico { width: 28px; height: 28px; flex: none; display: grid; place-items: center }
+.cs-m-ico svg { width: 26px; height: 26px; display: block }
+.cs-m-main { flex: 1; min-width: 0 }
+.cs-m-name { font-size: 15px; color: var(--cs-title); display: flex; align-items: center; gap: 6px }
+.cs-m-sub {
+  font-size: 12px;
+  color: var(--cs-sub);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-m-tag {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--cs-sub);
+  border: 1px solid #E5E5E5;
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 15px;
+}
+.cs-m.off { cursor: not-allowed }
+.cs-m.off .cs-m-ico, .cs-m.off .cs-m-name { opacity: .4 }
+.cs-m.off .cs-m-sub { color: #BBB }
+.cs-radio {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid #DCDCDC;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  transition: background .2s var(--cs-ease), border-color .2s var(--cs-ease);
+}
+.cs-radio svg { width: 12px; height: 12px; opacity: 0; transform: scale(.6); transition: opacity .2s var(--cs-ease), transform .2s var(--cs-ease) }
+.cs-m.on .cs-radio { background: var(--ali); border-color: var(--ali) }
+.cs-m.on .cs-radio svg { opacity: 1; transform: none }
+.cs-m.off .cs-radio { border-color: #EBEBEB; background: #FAFAFA }
+.cs-m .cs-go { width: 16px; height: 16px; flex: none; color: #CCC }
+
+.cs-field { padding: 2px 0 }
+.cs-overlay .cs-input {
+  width: 100%;
+  height: 44px;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--cs-text);
+  font-size: 16px;
+  padding: 0 12px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color .2s var(--cs-ease);
+}
+.cs-overlay .cs-input:focus { border-color: var(--ali) }
+.cs-overlay textarea.cs-input { height: auto; padding: 10px 12px; font-size: 14px; line-height: 1.5; resize: none }
+.cs-label { font-size: 12px; color: var(--cs-sub); margin: 0 0 6px }
+.cs-hint { font-size: 11.5px; color: var(--cs-sub); margin-top: 6px }
+
+/* ---------- 半屏弹层（验证 / 设置密码） ---------- */
+.cs-base { pointer-events: none; user-select: none; filter: saturate(.9); animation: none }
+.cs-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 480px;
+  max-height: 88%;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, .12);
+  animation: cs-sheet-up .28s var(--cs-ease);
+}
+@keyframes cs-sheet-up { from { transform: translateY(100%) } to { transform: none } }
+.cs-sheet-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 50px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--cs-line);
+}
+.cs-sheet-t { flex: 1; text-align: center; font-size: 16px; font-weight: 600; color: var(--cs-title) }
+.cs-sheet-body { flex: 1; overflow-y: auto; padding: 16px 20px 8px }
+.cs-sheet-foot { flex: none; padding: 8px 20px calc(14px + env(safe-area-inset-bottom)) }
+.cs-sheet-amt {
+  text-align: center;
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--cs-title);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.cs-sheet-amt .cur { font-size: 19px; font-weight: 600; margin-right: 1px }
+.cs-sheet-way { text-align: center; font-size: 12.5px; color: var(--cs-sub); margin: 4px 0 18px }
+.cs-sheet-way b { color: #666; font-weight: 500 }
+
+/* 6 格密码框 */
+.cs-pwdwrap { position: relative; margin: 0 auto; max-width: 320px }
+.cs-pwdbox {
+  display: flex;
+  height: 50px;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.cs-pwdbox i {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  border-right: 1px solid #E5E5E5;
+  position: relative;
+}
+.cs-pwdbox i:last-child { border-right: 0 }
+.cs-pwdbox i.on::after {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #1A1A1A;
+  animation: cs-dot .16s var(--cs-ease);
+}
+@keyframes cs-dot { from { transform: scale(.4) } to { transform: none } }
+.cs-pwdbox.focus i.cur::before {
+  content: '';
+  position: absolute;
+  width: 1.5px;
+  height: 20px;
+  background: var(--ali);
+  animation: cs-caret 1s steps(1, end) infinite;
+}
+@keyframes cs-caret { 0%, 49% { opacity: 1 } 50%, 100% { opacity: 0 } }
+.cs-pwdbox.focus { border-color: var(--ali) }
+.cs-pwdbox.shake { animation: cs-shake .3s var(--cs-ease); border-color: var(--cs-red) }
+@keyframes cs-shake { 0%, 100% { transform: none } 25% { transform: translateX(-6px) } 75% { transform: translateX(6px) } }
+/* 透明真实 input 覆盖在格子之上：原生聚焦/键盘/粘贴，视觉由格子承担 */
+.cs-overlay .cs-pwd-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px;
+  z-index: 2;
+  cursor: pointer;
+}
+.cs-pwd-row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 2px }
+.cs-pwd-row .cs-link { font-size: 12.5px }
+.cs-pwd-cap { font-size: 12px; color: var(--cs-sub); margin: 14px 0 6px }
+
+.cs-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px }
+.cs-overlay .cs-chip {
+  border: 1px solid #E5E5E5;
+  background: #fff;
+  color: #666;
+  border-radius: 14px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .2s var(--cs-ease);
+}
+.cs-overlay .cs-chip.on { border-color: var(--ali); color: var(--ali); background: var(--ali-soft) }
+.cs-chips-cap { font-size: 11.5px; color: var(--cs-sub); margin-top: 18px }
+
+/* BIO */
+.cs-bio { text-align: center; padding: 8px 0 4px }
+.cs-bio-ic {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: var(--ali-soft);
+  display: grid;
+  place-items: center;
+  color: var(--ali);
+  position: relative;
+}
+.cs-bio-ic svg { width: 44px; height: 44px }
+.cs-bio-ic::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--ali);
+  opacity: .35;
+  animation: cs-pulse 1.8s var(--cs-ease) infinite;
+}
+@keyframes cs-pulse { 0% { transform: scale(1); opacity: .35 } 70% { transform: scale(1.22); opacity: 0 } 100% { opacity: 0 } }
+.cs-bio-t { font-size: 15px; color: var(--cs-title) }
+.cs-bio-s { font-size: 12px; color: var(--cs-sub); margin-top: 4px }
+
+.cs-sms-row { display: flex; align-items: center; gap: 10px; margin-top: 12px }
+.cs-sms-phone { flex: 1; font-size: 13px; color: #666 }
+.cs-overlay .cs-sms-btn {
+  flex: none;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid var(--ali);
+  background: #fff;
+  color: var(--ali);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.cs-overlay .cs-sms-btn:disabled { border-color: #E5E5E5; color: #BBB; cursor: not-allowed }
+.cs-sandbox { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--cs-sub); margin-top: 10px }
+.cs-overlay .cs-sandbox input { width: 14px; height: 14px; accent-color: var(--ali); margin: 0 }
+
+/* ---------- 视图 4：付款码 ---------- */
+.cs-code-top {
+  background: linear-gradient(135deg, #1677FF 0%, #2E8BFF 60%, #4A9BFF 100%);
+  color: #fff;
+  border-radius: var(--cs-r) var(--cs-r) 0 0;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cs-code-top svg { width: 18px; height: 18px; flex: none }
+.cs-code-card {
+  background: #fff;
+  border-radius: var(--cs-r);
+  box-shadow: var(--cs-shadow);
+  overflow: hidden;
+  margin: 0 0 10px;
+  padding: 0;
+}
+.cs-code-inner { padding: 18px 16px 14px; text-align: center }
+.cs-barcode { display: block; margin: 0 auto; max-width: 100% }
+.cs-barcode svg { width: 100%; height: 66px; display: block }
+.cs-code-digits {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  letter-spacing: 1.5px;
+  color: #333;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.cs-code-split {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 12px;
+  color: #CCC;
+  font-size: 11px;
+}
+.cs-code-split::before, .cs-code-split::after { content: ''; flex: 1; height: 1px; background: #F0F0F0 }
+.cs-qrwrap { display: inline-block; padding: 6px; background: #fff; border-radius: 8px }
+.cs-qrwrap svg { display: block; width: 176px; height: 176px }
+.cs-ttl { font-size: 12px; color: var(--cs-sub); margin-top: 10px }
+.cs-progress { height: 2px; background: #F0F0F0; overflow: hidden }
+.cs-progress i { display: block; height: 100%; background: var(--ali); width: 100%; transition: width 1s linear }
+
+/* ---------- 视图 5：扫一扫 ---------- */
+.cs-panel.dark { background: #101418 }
+.cs-panel.dark .cs-nav { background: #101418; border-bottom-color: #1E242B }
+.cs-panel.dark .cs-nav-t { color: #fff }
+.cs-panel.dark .cs-icon-btn { color: #fff }
+.cs-panel.dark .cs-icon-btn:active { background: #1E242B }
+.cs-panel.dark .cs-body { padding: 0 }
+.cs-panel.dark .cs-foot { background: #101418; border-top-color: #1E242B }
+.cs-scan { padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); min-height: 100% }
+.cs-scan-stage {
+  position: relative;
+  width: 232px;
+  height: 232px;
+  margin: 22px auto 0;
+  background: rgba(255, 255, 255, .04);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cs-scan-stage .c { position: absolute; width: 22px; height: 22px; border: 3px solid var(--ali) }
+.cs-scan-stage .tl { left: 0; top: 0; border-right: 0; border-bottom: 0; border-radius: 4px 0 0 0 }
+.cs-scan-stage .tr { right: 0; top: 0; border-left: 0; border-bottom: 0; border-radius: 0 4px 0 0 }
+.cs-scan-stage .bl { left: 0; bottom: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 4px }
+.cs-scan-stage .br { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 4px 0 }
+.cs-scan-line {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(22, 119, 255, 0), #1677FF, rgba(22, 119, 255, 0));
+  box-shadow: 0 0 10px rgba(22, 119, 255, .8);
+  animation: cs-scanmove 2.4s var(--cs-ease) infinite;
+}
+@keyframes cs-scanmove { 0% { top: 8px } 50% { top: 218px } 100% { top: 8px } }
+.cs-scan-stage.torch { background: rgba(255, 255, 255, .16) }
+.cs-scan-tip { text-align: center; color: rgba(255, 255, 255, .72); font-size: 13px; margin-top: 18px }
+.cs-scan-actions { display: flex; justify-content: center; gap: 40px; margin: 22px 0 6px }
+.cs-overlay .cs-scan-act {
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, .8);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px;
+}
+.cs-overlay .cs-scan-act span.ic {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .1);
+  display: grid;
+  place-items: center;
+}
+.cs-overlay .cs-scan-act svg { width: 20px; height: 20px }
+.cs-overlay .cs-scan-act.on span.ic { background: var(--ali); color: #fff }
+.cs-scan-manual {
+  margin-top: 18px;
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: var(--cs-r);
+  padding: 12px;
+}
+.cs-scan-manual .cs-label { color: rgba(255, 255, 255, .6) }
+.cs-overlay .cs-scan-manual .cs-input {
+  background: rgba(0, 0, 0, .3);
+  border-color: rgba(255, 255, 255, .16);
+  color: #fff;
+}
+.cs-overlay .cs-scan-manual .cs-input:focus { border-color: var(--ali) }
+.cs-scan-btns { display: flex; gap: 8px; margin-top: 10px }
+.cs-overlay .cs-scan-btns .cs-btn {
+  flex: 1;
+  height: 38px;
+  border-radius: 19px;
+  font-size: 13px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .16);
+}
+.cs-overlay .cs-scan-btns .cs-btn:active { background: rgba(255, 255, 255, .2) }
+.cs-scan-info { margin-top: 12px }
+.cs-scan-info .cs-card { background: #fff }
+.cs-scan-info .cs-btn { margin-top: 10px }
+
+/* ---------- 视图 6：结果页 ---------- */
+.cs-result { text-align: center; padding: 30px 4px 6px }
+.cs-result-ic {
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  animation: cs-pop .34s cubic-bezier(.2, 1.3, .4, 1);
+}
+.cs-result-ic.ok { background: var(--cs-green) }
+.cs-result-ic.fail { background: var(--cs-red) }
+.cs-result-ic.wait { background: var(--ali) }
+.cs-result-ic svg { width: 38px; height: 38px }
+.cs-result-ic.ok svg path { stroke-dasharray: 24; stroke-dashoffset: 0; animation: cs-draw .3s .14s var(--cs-ease) }
+@keyframes cs-draw { from { stroke-dashoffset: 24 } to { stroke-dashoffset: 0 } }
+@keyframes cs-pop { 0% { transform: scale(.55) } 60% { transform: scale(1.06) } 100% { transform: scale(1) } }
+.cs-result-t { font-size: 20px; font-weight: 600; color: var(--cs-title) }
+.cs-result-amt {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--cs-title);
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.cs-result-amt .cur { font-size: 17px; margin-right: 1px }
+.cs-result-s { font-size: 12.5px; color: var(--cs-sub); margin-top: 6px }
+.cs-result-msg { margin: 14px 0 0; text-align: left }
+.cs-result-card { margin-top: 18px; text-align: left }
+
+/* ---------- 加载 / 骨架屏 ---------- */
+.cs-spin {
+  width: 30px;
+  height: 30px;
+  border: 2.5px solid #E8E8E8;
+  border-top-color: var(--ali);
+  border-radius: 50%;
+  margin: 0 auto;
+  animation: cs-rot .8s linear infinite;
+}
+@keyframes cs-rot { to { transform: rotate(360deg) } }
+.cs-loading { text-align: center; padding: 40px 10px }
+.cs-loading p { font-size: 13px; color: var(--cs-sub); margin-top: 14px }
+.cs-skel { border-radius: 8px; background: #EDEDED; position: relative; overflow: hidden }
+.cs-skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .75), rgba(255, 255, 255, 0));
+  transform: translateX(-100%);
+  animation: cs-shimmer 1.3s infinite;
+}
+@keyframes cs-shimmer { to { transform: translateX(100%) } }
+.cs-skel.amt { height: 46px; width: 56%; margin: 10px auto 14px }
+.cs-skel.line { height: 13px; margin: 9px 0 }
+.cs-skel.line.w70 { width: 70% }
+.cs-skel.line.w45 { width: 45% }
+.cs-skel.row { height: 46px; margin: 10px 0 }
+
+/* ---------- 无障碍 / 降级 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .cs-overlay *, .cs-overlay *::before, .cs-overlay *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important }
+}
+@media (min-width: 481px) {
+  .cs-panel { border-radius: 0 }
+}

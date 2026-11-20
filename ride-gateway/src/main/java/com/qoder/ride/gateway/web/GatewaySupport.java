@@ -26,10 +26,13 @@ public final class GatewaySupport {
         }
         return switch (code) {
             case "A0400" -> HttpStatus.BAD_REQUEST;
+            case "A0403" -> HttpStatus.FORBIDDEN;
             case "A0404" -> HttpStatus.NOT_FOUND;
             case "A0409" -> HttpStatus.CONFLICT;
+            case "A0429" -> HttpStatus.TOO_MANY_REQUESTS;
             case "C0001" -> HttpStatus.BAD_GATEWAY;
             case "B0002" -> HttpStatus.INTERNAL_SERVER_ERROR;
+            case "B0003" -> HttpStatus.SERVICE_UNAVAILABLE;
             default -> HttpStatus.BAD_REQUEST;
         };
     }

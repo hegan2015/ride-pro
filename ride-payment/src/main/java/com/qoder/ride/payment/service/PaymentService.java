@@ -5,6 +5,7 @@ import com.qoder.ride.common.result.ResultCode;
 import com.qoder.ride.common.util.JsonUtil;
 import com.qoder.ride.common.util.MoneyUtil;
 import com.qoder.ride.facade.common.PageDTO;
+import com.qoder.ride.facade.payment.LedgerCorrectionRequest;
 import com.qoder.ride.facade.payment.LedgerEntryDTO;
 import com.qoder.ride.facade.payment.LedgerQuery;
 import com.qoder.ride.facade.payment.OutboxEntryDTO;
@@ -47,6 +48,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -67,6 +69,8 @@ public class PaymentService {
 
     /** 同步请求宽限期：期内由请求线程自行完成回执确认，超期未决的 PENDING 由恢复任务接管。 */
     private static final long SYNC_GRACE_MS = 15_000L;
+    /** 外部银行卡清算户（对标 payment-pro 的 SYS_CASH）：CARD 支付的出资方，非用户钱包，允许透支。 */
+    static final String CARD_CLEARING_USER = "SYS_CARD";
 
     private final WalletMapper walletMapper;
     private final LedgerMapper ledgerMapper;
@@ -263,8 +267,12 @@ public class PaymentService {
         long fee = MoneyUtil.fee(amount, properties.getFeeBps());
         long driverIncome = amount - fee;
         String platform = properties.getPlatformUserId();
+        // 银行卡出资走外部清算户：payment-pro 的 CARD 单不扣 BALANCE 户（钱来自 SYS_CASH），
+        // 本地若仍扣乘客钱包就会与对端永久不平。清算户不是用户钱包，允许透支。
+        boolean card = "CARD".equalsIgnoreCase(request.getMethod());
+        String fundingUser = card ? CARD_CLEARING_USER : request.getPassengerId();
         List<Leg> legs = List.of(
-                new Leg(request.getPassengerId(), request.getOrderId(), "PAY_DEBIT", -amount),
+                new Leg(fundingUser, request.getOrderId(), "PAY_DEBIT", -amount),
                 new Leg(request.getDriverId(), request.getOrderId(), "PAY_CREDIT", driverIncome),
                 new Leg(platform, request.getOrderId(), "PLATFORM_FEE", fee));
         try {
@@ -310,6 +318,66 @@ public class PaymentService {
         } catch (DuplicateKeyException e) {
             return repeatedPay(requestId);
         }
+    }
+
+    /**
+     * 双账本历史冲正：本地多腿更正，借贷必相等，只增冲正腿不改原行，不镜像 payment-pro
+     * （对端账务本就正确，或已单独冲正）。用于修复「CARD 误扣乘客钱包」与
+     * 「pp 终态 FAILED 但本地已确认」两类历史缺口。requestId 幂等，重复提交不重复动账。
+     */
+    public Map<String, Object> correctLedger(LedgerCorrectionRequest request) {
+        String requestId = requireKey(request.getRequestId(), "requestId");
+        String reason = request.getReason();
+        if (reason == null || reason.isBlank()) {
+            throw new BizException(ResultCode.PARAM_ERROR, "冲正事由必填");
+        }
+        List<LedgerCorrectionRequest.Leg> reqLegs = request.getLegs();
+        if (reqLegs == null || reqLegs.isEmpty()) {
+            throw new BizException(ResultCode.PARAM_ERROR, "冲正腿不能为空");
+        }
+        long sum = 0;
+        for (LedgerCorrectionRequest.Leg leg : reqLegs) {
+            if (leg.getUserId() == null || leg.getUserId().isBlank()
+                    || leg.getBizType() == null || leg.getBizType().isBlank()
+                    || leg.getAmount() == null || leg.getAmount() == 0) {
+                throw new BizException(ResultCode.PARAM_ERROR, "冲正腿 userId/bizType/amount 必填且金额非零");
+            }
+            sum += leg.getAmount();
+        }
+        if (sum != 0) {
+            throw new BizException(ResultCode.PARAM_ERROR, "冲正借贷必须相等，当前净额=" + sum);
+        }
+        IdempotentRecordDO existing = idempotentMapper.selectByRequestId(requestId);
+        if (existing != null && existing.getResultJson() != null) {
+            log.info("冲正幂等命中 requestId={}", requestId);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> repeated = JsonUtil.fromJson(existing.getResultJson(), Map.class);
+            repeated.put("repeated", true);
+            return repeated;
+        }
+        long now = System.currentTimeMillis();
+        List<Leg> legs = reqLegs.stream()
+                .map(l -> new Leg(l.getUserId(), request.getOrderId(), l.getBizType(), l.getAmount()))
+                .toList();
+        Map<String, Object> out = transactionTemplate.execute(s -> {
+            applyLegs(legs, requestId, now);
+            Map<String, Object> balances = new LinkedHashMap<>();
+            for (Leg leg : legs) {
+                balances.put(leg.userId(), walletMapper.selectByUserId(leg.userId()).getBalance());
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("requestId", requestId);
+            result.put("orderId", request.getOrderId());
+            result.put("reason", reason);
+            result.put("legs", reqLegs);
+            result.put("balances", balances);
+            result.put("repeated", false);
+            idempotentMapper.insert(new IdempotentRecordDO(requestId, "CORRECTION", JsonUtil.toJson(result), now));
+            return result;
+        });
+        log.warn("双账本历史冲正 requestId={} orderId={} reason={} legs={} balances={}",
+                requestId, request.getOrderId(), reason, JsonUtil.toJson(reqLegs), out.get("balances"));
+        return out;
     }
 
     /**
@@ -396,7 +464,8 @@ public class PaymentService {
             idempotentMapper.insert(new IdempotentRecordDO(refKey, bizType, null, now));
             for (Leg leg : legs) {
                 walletMapper.ensure(leg.userId(), now);
-                if (leg.amount() < 0 && walletMapper.freeze(leg.userId(), -leg.amount(), now) == 0) {
+                if (leg.amount() < 0 && !CARD_CLEARING_USER.equals(leg.userId())
+                        && walletMapper.freeze(leg.userId(), -leg.amount(), now) == 0) {
                     throw new BizException(ResultCode.CONFLICT, "可用余额不足: " + leg.userId());
                 }
                 recordLedger(leg.userId(), leg.orderId(), leg.bizType(), leg.amount(), refKey, now, "PENDING", null);
@@ -439,7 +508,9 @@ public class PaymentService {
             List<Leg> plan = new ArrayList<>();
             for (LedgerEntryDO leg : legs) {
                 if (leg.getAmount() < 0) {
-                    if (walletMapper.debitAndUnfreeze(leg.getUserId(), -leg.getAmount(), now) == 0) {
+                    if (CARD_CLEARING_USER.equals(leg.getUserId())) {
+                        walletMapper.debitClearing(leg.getUserId(), -leg.getAmount(), now);
+                    } else if (walletMapper.debitAndUnfreeze(leg.getUserId(), -leg.getAmount(), now) == 0) {
                         throw new BizException(ResultCode.CONFLICT, "回执确认扣款失败（冻结不足）: " + leg.getUserId());
                     }
                 } else if (leg.getAmount() > 0) {
@@ -498,7 +569,7 @@ public class PaymentService {
             if (!"PENDING".equals(leg.getStatus())) {
                 continue;
             }
-            if (leg.getAmount() < 0) {
+            if (leg.getAmount() < 0 && !CARD_CLEARING_USER.equals(leg.getUserId())) {
                 walletMapper.unfreeze(leg.getUserId(), -leg.getAmount(), now);
             }
             ledgerMapper.fail(leg.getId());
@@ -520,7 +591,9 @@ public class PaymentService {
         for (Leg leg : legs) {
             walletMapper.ensure(leg.userId(), now);
             if (leg.amount() < 0) {
-                if (walletMapper.debit(leg.userId(), -leg.amount(), now) == 0) {
+                if (CARD_CLEARING_USER.equals(leg.userId())) {
+                    walletMapper.debitClearing(leg.userId(), -leg.amount(), now);
+                } else if (walletMapper.debit(leg.userId(), -leg.amount(), now) == 0) {
                     throw new BizException(ResultCode.CONFLICT, "可用余额不足: " + leg.userId());
                 }
             } else if (leg.amount() > 0) {

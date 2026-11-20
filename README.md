@@ -1,6 +1,14 @@
 # ride-pro 打车系统设计文档
 
-版本 v1.8.0 ｜ 2026-11-18 ｜ 状态：已实现，验证记录见 §17.0、§19.6 与 §20.6
+版本 v1.9.2 ｜ 2026-11-20 ｜ 状态：已实现，验证记录见 §17.0、§19.6、§20.6 与 §22.5
+
+v1.9.2 变更（**收银台开放对接**，payment-pro 不自带 C 端 H5 → ride 乘客端渲染，详见 §22 与 `docs/cashier-integration.md`）：
+- **9 个 cashier.\* 商户方法落地 ride**：`PaymentProClient` 复用既有 HMAC 签名/HTTPS/超时/错误语义新增 9 方法；`CashierService`（新）编排；`CashierController`（新，`/api/cashier/**`）暴露乘客端；**WalletController 既有端点零改动**。
+- **资金语义不变**：收银台受理仍走既有 `PaymentService.pay()`（冻结+PENDING → 同步受理 → 回执 CONFIRMED 动账 → 域 outbox）；`MirrorExecutor.executePay` 仅在存在 `cashier_request` 留痕时走 cashier 分支，否则原 `trade.create/trade.pay` 路径逐字节不变；**BALANCE 同步语义与手续费口径不变**。
+- **幂等键 `PAY-{orderId}`** 与订单域一致：收银台先付后订单域 `/pay` 命中幂等不重复扣款；pp 交易单以同一 `outTradeNo` 幂等确保，不产生重复单。新增 `cashier_request`/`cashier_code` 两表（**只 additive**）留痕，口令/短信码/密钥绝不落库。
+- **乘客端收银台 6 视图**：方式选择（9 方式，预留灰显带原因）/ 付款码出示 / 扫一扫 / 四型验证 / 设置口令 / 结果页轮询终态；**二维码由内置纯 JS QR 编码器生成内联 SVG，零 CDN 零第三方库**。
+- **安全**：沿用乘客既有会话 + 订单归属校验；金额/乘客/司机由订单域回填（防改额/代付）；卡号仅后四位；短信默认掩码，`sandbox=true` 才返明文（网关开关可关）。
+- **验证**：单测 **41/41**；`verify-cashier-ride.py`（新）**56/56**（9 方法全链路：O68 余额→P1829、O69 银行卡→P1830 脱敏 `**********0202`、O70 主扫→P1831、O71 被扫→P1832，均 1611 分 SUCCESS；幂等不重复扣款 / 码过期 409 / 越权与改额 403 / 短信掩码 / 双账本 rideΔ==ppΔ / 账面守恒）；二维码独立解码自检 **11/11**；`verify-integration.py` **24/24** 无回归。
 
 v1.8.0 变更（**Docker 中间件双模式**，详见 §20）：
 - **双模式**：默认零依赖（内嵌 ZK + H2 文件库）完全保留；`./run.sh --docker` 切换 claim-shared 容器栈——MySQL 8（3306，ride_* 5 库）+ ZooKeeper 3.9（2182，独立容器与数据卷），docker 模式 9 进程（无内嵌 registry）。`run/mode` 标记供混沌脚本重启继承。
@@ -1125,3 +1133,71 @@ ops-pro Registry：mysql usedBy +ride-pro（ride_* 按域分库），新增 `zoo
 - **修复（纯前端，服务端既有机制够用）**：司机 `grab`/`act('start')`/`loadActiveOrder`（重载续驶）自动 `startSim()` 驶向目标（接驾→上车点、开始→终点），导航按钮仍可手动停/开；司机端 3s 上报间隔同步拉 `trip_track` 画蓝色行驶线；乘客端 4s 轮询对 ACCEPTED/ARRIVED/IN_PROGRESS 全程画线（接驾绿 `#00b578`、行程蓝 `#10aeff`），订单终态清空轨迹与取景锁；两端订单激活时自动取景（乘客 z13 起终点/司机质心、司机 z14 当前位置+目标质心）；乘客恢复活跃订单时回填 origin/dest 与起终点标记/文案。location 域接单即逐点落 `trip_track` 并 WS 转发 DRIVER_LOCATION，无需改动。
 - **验证**：41/41 单测、verify-integration 24/24；端到端实测（专用身份 P6/D10，避开用户 Chrome 页签同身份并行操作）：接单自动驶向乘客（望京→国贸方向移动）、司机端画线 17 点、重载自动续驶、乘客接驾绿线 17 点 + z13 + 司机标记、开始行程后蓝线 39 点 = 落库 39 点、支付后轨迹清空；标记回填复验「起点/终点/司机」三标记 + 起终点文案；无 console 错。
 - **环境教训**：内置浏览器面板隐藏时 Chrome 节流 setInterval（模拟行驶/上报停摆），验证改手动泵送步点；真实用户页签可见不受影响。zsh 不对未加引号变量词分裂（`for + set --` 传坐标致 lat 整串 400）。
+## 22. 收银台开放对接（v1.9.2）
+
+> 完整说明见 **`docs/cashier-integration.md`**；设计细节见 DESIGN §22。
+
+### 22.1 端点映射（pp cashier.* → ride 网关）
+
+| pp method | ride 端点 |
+|---|---|
+| `cashier.methods` | `GET /api/cashier/methods?userId&orderId` |
+| `cashier.code.create` | `POST /api/cashier/code`（`type=USER_PRESENTED\|MERCHANT_PRESENTED`） |
+| `cashier.code.parse` | `POST /api/cashier/code/parse` |
+| `cashier.code.query` | `GET /api/cashier/code/{code}` |
+| `cashier.scanPay` | `POST /api/cashier/scan-pay` |
+| `cashier.verify` | `POST /api/cashier/verify` |
+| `cashier.payVerified` | `POST /api/cashier/pay` |
+| `cashier.payPassword.set` | `POST /api/cashier/pay-password` |
+| `cashier.sms.send` | `POST /api/cashier/sms` |
+| （结果轮询，复用 `trade.query`） | `GET /api/cashier/result?userId&orderId` |
+
+### 22.2 可复制 curl（乘客登录态 userId，金额单位「分」）
+
+```bash
+R=http://127.0.0.1:8090
+P=P1001; O=O1001          # 换成真实乘客 ID 与 COMPLETED 行程订单 ID
+
+# 1) 渲染支付方式（9 方式 + 实付 + 免密限额）
+curl -s "$R/api/cashier/methods?userId=$P&orderId=$O"
+
+# 2) 首次使用设置支付口令（6 位数字）
+curl -s -X POST "$R/api/cashier/pay-password" -H 'Content-Type: application/json' \
+  -d "{\"userId\":\"$P\",\"password\":\"246813\"}"
+
+# 3) 支付验证（口令）→ 取 verifyToken
+curl -s -X POST "$R/api/cashier/verify" -H 'Content-Type: application/json' \
+  -d "{\"userId\":\"$P\",\"orderId\":\"$O\",\"verifyType\":\"PASSWORD\",\"payPassword\":\"246813\"}"
+
+# 4) 验证后支付（幂等键由 ride 生成 PAY-{orderId}，重复提交不重复扣款）
+curl -s -X POST "$R/api/cashier/pay" -H 'Content-Type: application/json' \
+  -d "{\"userId\":\"$P\",\"orderId\":\"$O\",\"method\":\"BALANCE\",\"verifyToken\":\"<上一步 verifyToken>\"}"
+
+# 5) 付款码出示（被扫）→ 前端用 qrContent 绘内联 SVG 二维码
+curl -s -X POST "$R/api/cashier/code" -H 'Content-Type: application/json' \
+  -d "{\"userId\":\"$P\",\"orderId\":\"$O\",\"type\":\"USER_PRESENTED\"}"
+
+# 6) 短信验证码：默认掩码；sandbox=true 仅联调返明文
+curl -s -X POST "$R/api/cashier/sms" -H 'Content-Type: application/json' \
+  -d "{\"userId\":\"$P\",\"orderId\":\"$O\",\"sandbox\":true}"
+
+# 7) 结果页轮询终态
+curl -s "$R/api/cashier/result?userId=$P&orderId=$O"
+```
+
+### 22.3 一键验证
+
+```bash
+# ride 收银台全链路自证（不停启任何服务；独立前缀 RDCSH+uuid）
+python3 verify-cashier-ride.py
+# 可选：复用已充值乘客与专用司机，并指定预热订单（pp 重启后建议带预热，避开冷启动超时）
+RDCSH_PASSENGER=P7 RDCSH_DRIVER=D11 RDCSH_WARM_ORDER=O58 python3 verify-cashier-ride.py
+
+# 既有双账本集成门禁（F 段会停/启 payment-pro，须先抢 payment 锁）
+python3 verify-integration.py
+```
+
+### 22.4 UI 已接 vs 仅 API
+
+- **UI 已接（乘客端 `passenger.html`）**：行程结束「支付车费」→ 收银台；钱包页「🧾 待付行程收银台」；收银台内含方式选择、付款码出示（二维码+倒计时+轮询）、扫一扫（解析→受理）、四型验证、设置口令、结果页（成功/失败/处理中+重试）。
+- **仅 API（无独立 UI 入口，按需由运营/联调调用）**：`GET /api/cashier/code/{code}` 与 `POST /api/cashier/code/parse` 已被付款码页/扫一扫页内部使用；`GET /api/cashier/result` 由结果页轮询使用。管理端暂未新增收银台专属报表页（受理留痕可经既有流水页 `pp_receipt` 查看）。

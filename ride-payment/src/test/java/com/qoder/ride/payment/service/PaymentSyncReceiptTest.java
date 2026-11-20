@@ -3,6 +3,7 @@ package com.qoder.ride.payment.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.qoder.ride.common.exception.BizException;
+import com.qoder.ride.facade.payment.LedgerCorrectionRequest;
 import com.qoder.ride.facade.payment.PayRequest;
 import com.qoder.ride.facade.payment.PayResultDTO;
 import com.qoder.ride.facade.payment.RefundRequest;
@@ -11,9 +12,12 @@ import com.qoder.ride.payment.client.PaymentProClient;
 import com.qoder.ride.payment.client.PaymentProIntegration;
 import com.qoder.ride.payment.client.PaymentProRejectedException;
 import com.qoder.ride.payment.config.PaymentProperties;
+import com.qoder.ride.payment.dataobject.CashierRequestDO;
 import com.qoder.ride.payment.dataobject.LedgerEntryDO;
 import com.qoder.ride.payment.dataobject.MirrorOutboxDO;
 import com.qoder.ride.payment.dataobject.WithdrawOrderDO;
+import com.qoder.ride.payment.mapper.CashierCodeMapper;
+import com.qoder.ride.payment.mapper.CashierRequestMapper;
 import com.qoder.ride.payment.mapper.IdempotentMapper;
 import com.qoder.ride.payment.mapper.LedgerMapper;
 import com.qoder.ride.payment.mapper.MirrorOutboxMapper;
@@ -39,6 +43,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -70,6 +75,7 @@ class PaymentSyncReceiptTest {
     private IdempotentMapper idempotentMapper;
     private PayOutboxMapper outboxMapper;
     private WithdrawOrderMapper withdrawOrderMapper;
+    private CashierRequestMapper cashierRequestMapper;
     private PaymentProClient client;
 
     @BeforeEach
@@ -93,6 +99,8 @@ class PaymentSyncReceiptTest {
         cfg.addMapper(RefundOutboxMapper.class);
         cfg.addMapper(MirrorOutboxMapper.class);
         cfg.addMapper(PaymentProAccountMapper.class);
+        cfg.addMapper(CashierRequestMapper.class);
+        cfg.addMapper(CashierCodeMapper.class);
         SqlSessionFactory factory = new SqlSessionFactoryBuilder().build(cfg);
         SqlSessionTemplate template = new SqlSessionTemplate(factory);
         walletMapper = template.getMapper(WalletMapper.class);
@@ -117,12 +125,18 @@ class PaymentSyncReceiptTest {
         });
         when(client.topup(anyString(), anyLong(), anyString())).thenReturn("E1");
         when(client.tradeCreate(anyString(), anyLong(), anyString())).thenReturn("O1");
-        when(client.tradePay(anyString(), anyString(), anyString(), anyString())).thenReturn("P1");
+        when(client.tradePay(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(JSON.createObjectNode().put("id", "P1").put("status", "SUCCESS").put("fee", 0));
+        when(client.tradeQuery(anyString()))
+                .thenReturn(JSON.createObjectNode().set("payment",
+                        JSON.createObjectNode().put("id", "P1").put("status", "SUCCESS").put("fee", 0)));
         when(client.withdraw(anyString(), anyLong(), anyString())).thenReturn("P-WD");
 
         PaymentProIntegration integration = new PaymentProIntegration(client,
                 template.getMapper(PaymentProAccountMapper.class), properties);
-        MirrorExecutor executor = new MirrorExecutor(mirrorMapper, ledgerMapper, integration, client, properties);
+        MirrorExecutor executor = new MirrorExecutor(mirrorMapper, ledgerMapper, integration, client, properties,
+                cashierRequestMapper = template.getMapper(CashierRequestMapper.class),
+                template.getMapper(CashierCodeMapper.class));
         service = new PaymentService(walletMapper, ledgerMapper, idempotentMapper, outboxMapper,
                 refundOutboxMapper, withdrawOrderMapper, tt, properties, mirrorMapper, integration, executor);
         dispatcher = new MirrorDispatcher(mirrorMapper, executor, service, integration, properties);
@@ -313,5 +327,164 @@ class PaymentSyncReceiptTest {
         assertTrue(refundLegs.stream().allMatch(l -> "CONFIRMED".equals(l.getStatus())));
         assertEquals("SENT", mirrorMapper.selectByBizNo("M-REFUND-" + r.getRequestId()).getStatus());
         assertEquals(8800L, walletMapper.selectByUserId(p).getBalance());
+    }
+
+    /** pp 受理返回 PROCESSING（在途）时不得本地确认动账，须保持 PENDING 交恢复续传。 */
+    @Test
+    void processingReceiptKeepsPendingUntilSettled() {
+        String p = uid("P");
+        String d = uid("D");
+        topup(p, 10000);
+        String orderId = "O" + SEQ.incrementAndGet();
+        String refKey = "PAY-" + orderId;
+        when(client.tradePay(anyString(), anyString(), eq(refKey), anyString()))
+                .thenReturn(JSON.createObjectNode().put("id", "P-PROC").put("status", "PROCESSING").put("fee", 0));
+
+        BizException e = assertThrows(BizException.class, () -> service.pay(payRequest(orderId, p, d, 1704)));
+        assertTrue(e.getMessage().contains("PENDING"));
+        assertEquals(10000L, walletMapper.selectByUserId(p).getBalance());
+        assertEquals(1704L, walletMapper.selectByUserId(p).getFrozenAmount());
+        assertEquals(0L, walletMapper.selectByUserId(d).getBalance());
+        assertTrue(legs(refKey).stream().allMatch(l -> "PENDING".equals(l.getStatus())));
+        assertTrue(!service.isPaid(orderId));
+        assertEquals("NEW", mirrorMapper.selectByBizNo("M-PAY-" + refKey).getStatus());
+
+        org.mockito.Mockito.doReturn(JSON.createObjectNode().put("id", "P-PROC").put("status", "SUCCESS").put("fee", 0))
+                .when(client).tradePay(anyString(), anyString(), eq(refKey), anyString());
+        mirrorMapper.markRetry("M-PAY-" + refKey, 0L, null);
+        dispatcher.deliver();
+
+        assertEquals(10000 - 1704L, walletMapper.selectByUserId(p).getBalance());
+        assertEquals(0L, walletMapper.selectByUserId(p).getFrozenAmount());
+        assertTrue(legs(refKey).stream().allMatch(l -> "CONFIRMED".equals(l.getStatus())));
+        assertTrue(service.isPaid(orderId));
+        assertEquals("SENT", mirrorMapper.selectByBizNo("M-PAY-" + refKey).getStatus());
+    }
+
+    /** pp 终态 FAILED 属明确拒绝：流水 FAILED、冻结退回、镜像 FAILED，绝不本地确认。 */
+    @Test
+    void failedTerminalReceiptRollsBackLocal() {
+        String p = uid("P");
+        String d = uid("D");
+        topup(p, 10000);
+        String orderId = "O" + SEQ.incrementAndGet();
+        String refKey = "PAY-" + orderId;
+        when(client.tradePay(anyString(), anyString(), eq(refKey), anyString()))
+                .thenReturn(JSON.createObjectNode().put("id", "P-FAIL").put("status", "FAILED")
+                        .put("failReason", "补单收敛: 无分布式事务记录，一阶段未执行"));
+
+        assertThrows(BizException.class, () -> service.pay(payRequest(orderId, p, d, 1704)));
+        assertEquals(10000L, walletMapper.selectByUserId(p).getBalance());
+        assertEquals(0L, walletMapper.selectByUserId(p).getFrozenAmount());
+        assertEquals(0L, walletMapper.selectByUserId(d).getBalance());
+        assertTrue(legs(refKey).stream().allMatch(l -> "FAILED".equals(l.getStatus())));
+        assertTrue(!service.isPaid(orderId));
+        assertEquals("FAILED", mirrorMapper.selectByBizNo("M-PAY-" + refKey).getStatus());
+    }
+
+    /** CARD 银行卡出资落外部清算户：乘客钱包分毫不动，与 pp 不扣 BALANCE 户对齐。 */
+    @Test
+    void cardFundingLeavesPassengerWalletUntouched() {
+        String p = uid("P");
+        String d = uid("D");
+        topup(p, 10000);
+        String orderId = "O" + SEQ.incrementAndGet();
+        String refKey = "PAY-" + orderId;
+        long now = System.currentTimeMillis();
+        CashierRequestDO cashier = new CashierRequestDO();
+        cashier.setRequestId(refKey);
+        cashier.setOrderId(orderId);
+        cashier.setUserId(p);
+        cashier.setPpOrderId("O-CARD-" + orderId);
+        cashier.setPpAccountId("A-" + p);
+        cashier.setAmount(1704L);
+        cashier.setMode("VERIFIED");
+        cashier.setMethod("CARD");
+        cashier.setStatus("NEW");
+        cashier.setCreatedAt(now);
+        cashier.setUpdatedAt(now);
+        cashierRequestMapper.upsert(cashier);
+        when(client.cashierPayVerified(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(JSON.createObjectNode().set("payment",
+                        JSON.createObjectNode().put("id", "P-CARD").put("status", "SUCCESS").put("fee", 10)));
+
+        PayRequest req = payRequest(orderId, p, d, 1704);
+        req.setMethod("CARD");
+        PayResultDTO result = service.pay(req);
+
+        assertEquals(10000L, walletMapper.selectByUserId(p).getBalance());
+        assertEquals(0L, walletMapper.selectByUserId(p).getFrozenAmount());
+        assertEquals(1704 - result.getFee(), walletMapper.selectByUserId(d).getBalance());
+        assertEquals(-1704L, walletMapper.selectByUserId(PaymentService.CARD_CLEARING_USER).getBalance());
+        LedgerEntryDO debit = legs(refKey).stream()
+                .filter(l -> "PAY_DEBIT".equals(l.getBizType())).findFirst().orElseThrow();
+        assertEquals(PaymentService.CARD_CLEARING_USER, debit.getUserId());
+        assertEquals("CONFIRMED", debit.getStatus());
+        assertTrue(service.isPaid(orderId));
+        assertEquals("SENT", mirrorMapper.selectByBizNo("M-PAY-" + refKey).getStatus());
+    }
+
+    /** 冲正借贷不等必须拒绝，且不产生任何动账。 */
+    @Test
+    void correctionRejectsUnbalancedLegs() {
+        String p = uid("P");
+        topup(p, 10000);
+        LedgerCorrectionRequest req = new LedgerCorrectionRequest();
+        req.setRequestId("FIX-UNBAL-" + SEQ.incrementAndGet());
+        req.setReason("测试借贷不等");
+        LedgerCorrectionRequest.Leg leg = new LedgerCorrectionRequest.Leg();
+        leg.setUserId(p);
+        leg.setBizType("CARD_FUNDING_FIX");
+        leg.setAmount(1611L);
+        req.setLegs(List.of(leg));
+
+        assertThrows(BizException.class, () -> service.correctLedger(req));
+        assertEquals(10000L, walletMapper.selectByUserId(p).getBalance());
+        assertNull(idempotentMapper.selectByRequestId(req.getRequestId()));
+    }
+
+    /** 冲正只增腿不改原行：历史按 BALANCE 误扣乘客（实际 CARD 出资），退回乘客、清算户承担；重复提交幂等。 */
+    @Test
+    void correctionRestoresWalletAndIsIdempotent() {
+        String p = uid("P");
+        String d = uid("D");
+        topup(p, 10000);
+        String orderId = "O" + SEQ.incrementAndGet();
+        String refKey = "PAY-" + orderId;
+        // 历史缺陷形态：未带 method，按 BALANCE 扣了乘客钱包
+        service.pay(payRequest(orderId, p, d, 1704));
+        assertEquals(10000 - 1704L, walletMapper.selectByUserId(p).getBalance());
+        long driverBalance = walletMapper.selectByUserId(d).getBalance();
+
+        LedgerCorrectionRequest fix = new LedgerCorrectionRequest();
+        fix.setRequestId("FIX-CARD-" + orderId);
+        fix.setOrderId(orderId);
+        fix.setReason("CARD 出资误扣乘客钱包，改由外部清算户承担");
+        LedgerCorrectionRequest.Leg credit = new LedgerCorrectionRequest.Leg();
+        credit.setUserId(p);
+        credit.setBizType("CARD_FUNDING_FIX");
+        credit.setAmount(1704L);
+        LedgerCorrectionRequest.Leg debit = new LedgerCorrectionRequest.Leg();
+        debit.setUserId(PaymentService.CARD_CLEARING_USER);
+        debit.setBizType("CARD_FUNDING_FIX");
+        debit.setAmount(-1704L);
+        fix.setLegs(List.of(credit, debit));
+
+        Map<String, Object> out = service.correctLedger(fix);
+        assertEquals(Boolean.FALSE, out.get("repeated"));
+        assertEquals(10000L, walletMapper.selectByUserId(p).getBalance());
+        assertEquals(-1704L, walletMapper.selectByUserId(PaymentService.CARD_CLEARING_USER).getBalance());
+        assertEquals(driverBalance, walletMapper.selectByUserId(d).getBalance());
+        // 原 PAY_DEBIT 腿保留不改，冲正腿独立成组
+        assertEquals("CONFIRMED", legs(refKey).stream()
+                .filter(l -> "PAY_DEBIT".equals(l.getBizType())).findFirst().orElseThrow().getStatus());
+        assertTrue(legs(fix.getRequestId()).stream().allMatch(l -> "CONFIRMED".equals(l.getStatus())));
+        assertTrue(service.isPaid(orderId));
+
+        Map<String, Object> again = service.correctLedger(fix);
+        assertEquals(Boolean.TRUE, again.get("repeated"));
+        assertEquals(10000L, walletMapper.selectByUserId(p).getBalance());
+        assertEquals(-1704L, walletMapper.selectByUserId(PaymentService.CARD_CLEARING_USER).getBalance());
+        assertEquals(2, legs(fix.getRequestId()).size());
     }
 }

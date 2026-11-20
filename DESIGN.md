@@ -1123,3 +1123,38 @@ ops-pro Registry：mysql usedBy +ride-pro（ride_* 按域分库），新增 `zoo
 - **修复（纯前端，服务端既有机制够用）**：司机 `grab`/`act('start')`/`loadActiveOrder`（重载续驶）自动 `startSim()` 驶向目标（接驾→上车点、开始→终点），导航按钮仍可手动停/开；司机端 3s 上报间隔同步拉 `trip_track` 画蓝色行驶线；乘客端 4s 轮询对 ACCEPTED/ARRIVED/IN_PROGRESS 全程画线（接驾绿 `#00b578`、行程蓝 `#10aeff`），订单终态清空轨迹与取景锁；两端订单激活时自动取景（乘客 z13 起终点/司机质心、司机 z14 当前位置+目标质心）；乘客恢复活跃订单时回填 origin/dest 与起终点标记/文案。location 域接单即逐点落 `trip_track` 并 WS 转发 DRIVER_LOCATION，无需改动。
 - **验证**：41/41 单测、verify-integration 24/24；端到端实测（专用身份 P6/D10，避开用户 Chrome 页签同身份并行操作）：接单自动驶向乘客（望京→国贸方向移动）、司机端画线 17 点、重载自动续驶、乘客接驾绿线 17 点 + z13 + 司机标记、开始行程后蓝线 39 点 = 落库 39 点、支付后轨迹清空；标记回填复验「起点/终点/司机」三标记 + 起终点文案；无 console 错。
 - **环境教训**：内置浏览器面板隐藏时 Chrome 节流 setInterval（模拟行驶/上报停摆），验证改手动泵送步点；真实用户页签可见不受影响。zsh 不对未加引号变量词分裂（`for + set --` 传坐标致 lat 整串 400）。
+## 22. 收银台开放对接（v1.9.2，payment-pro 不自带 C 端 H5 → ride 乘客端渲染）
+
+> 完整对接说明见 **`docs/cashier-integration.md`**（9 方法映射 / 幂等 / 错误 / 沙箱短信 / 视图清单 / 兼容红线）。
+
+### 22.1 分层与新增文件
+- `PaymentProClient` **新增 9 个 `cashier*` 方法**，复用既有 TreeMap+HmacSHA256 签名、毫秒 timestamp、HTTPS 自签信任、10s 超时与错误语义（未另起签名实现）。
+- `CashierService`（新）：账户映射沿用 `PaymentProIntegration.ensureAccount`（商户侧用既有 `merchantAccountId`）；pp 交易单以既有 `trade.create`（`outTradeNo=PAY-{orderId}`）幂等确保，与镜像路径**同一张单**。
+- `MirrorExecutor.executePay` **前置分支**：存在 `cashier_request` 留痕 → `executeCashierPay`（`cashier.payVerified`/`cashier.scanPay`），否则原 `trade.create/trade.pay` 路径**逐字节不变**。
+- `PaymentService` **零改动**：收银台受理仍走 `pay()` 的「冻结+PENDING → 同步受理 → 回执 CONFIRMED 动账 → 域 outbox」，BALANCE 同步语义与手续费口径不变。
+- 新表 `cashier_request` / `cashier_code`（H2 + MySQL 双 schema，**只 additive**）；`PaymentFacade` 新增 10 方法；`CashierController`（新，`/api/cashier/**`），**WalletController 既有端点零改动**。
+- 前端 `static/cashier.js`（新）+ `passenger.html` 支付入口改接收银台（脚本缺失自动退回 `legacyPayOrder`）。
+
+### 22.2 幂等与留痕
+- **支付幂等键 `PAY-{rideOrderId}`**，与订单域 `OrderService.payKey()` 一致：收银台先付后订单域 `/pay` 命中幂等（`repeated=true`）**不重复扣款**；反之亦然。
+- 付款码键 `CSHC-{orderId}-{type}`（ACTIVE 期间复用同键返同一码，过期/核销后换新键）；验证键 `CSHV-{orderId}-{rand8}` **每次尝试独立**，避免失败会话被幂等复用。
+- 留痕：`cashier_request`（幂等键/pp 单号/一次性 verifyToken/**脱敏卡号**/状态）+ `cashier_code`（码归属与状态）+ 既有 `idempotent_record`/`ledger_entry.pp_receipt`/`mirror_outbox`/`pay_outbox`。
+- 崩溃恢复：已有 `pp_payment_id` 直接复用；否则同键重放；令牌已核销致 403/409 时以 `trade.query` 终态兜底（`settledPaymentId`）。
+- **绝不落库/回显/入日志**：支付口令、短信码、生物令牌、appSecret。
+
+### 22.3 错误与安全
+- pp 拒绝异常解析出 `code`/`error` 原样透传（A0400/A0403/A0404/A0409/A0429/B0001/B0003）；`GatewaySupport` additive 补 `A0403→403`、`A0429→429`、`B0003→503`。
+- 沿用乘客既有会话（userId），每端点校验**订单归属**；金额/乘客/司机由订单域回填，前端传值忽略（防改额/代付）。
+- 短信默认掩码 `******`+`smsCodeMasked`，仅 `sandbox=true` 返明文；网关开关 `gateway.cashier-sandbox-enabled`（生产应置 false）。
+
+### 22.4 乘客端收银台 6 视图 + 零 CDN 二维码
+主页（金额/优惠/实付 + 9 方式，RESERVED 灰显带原因）→ 验证（口令/短信/指纹/小额免密，`NEED_SET_PASSWORD`/`LOCKED` 分支）→ 设置口令 → 付款码出示（**内联 SVG 二维码** + displayCode 分组 + 倒计时 + 2s 轮询）→ 扫一扫（parse 确认 → scanPay）→ 结果页（成功/失败/处理中轮询终态 + 重试）。
+二维码由 `cashier.js` 内置**纯 JS QR 编码器**（byte 模式 / ECC-L / v1..6 / GF(256) RS / 8 掩码罚分择优 / BCH 格式信息）生成内联 SVG，**全文件零 http(s) 外链**（仅 SVG 命名空间），不引第三方库。
+
+### 22.5 验证（2026-11-20 实测）
+- `./mvnw install` / `./mvnw test`：**41/41 单测全过**（含 payment 域 19 项，两处测试仅补 mapper 装配，断言未改）；ride 重启 **9/9 健康**。
+- `verify-cashier-ride.py`（新，独立前缀 RDCSH+uuid，不停启任何服务）：**56 通过 / 0 失败**。证据（乘客 P7 / 专用司机 D11）：O68 余额+口令→P1829、O69 银行卡→P1830（cardNo=`**********0202`）、O70 主扫→P1831、O71 被扫内联口令→P1832，均 1611 分且终态 SUCCESS；O72 前端传 amount=1 仍按订单实付 1611 受理。断言含幂等 `repeated=true` 同单不重复扣款、订单域 `/pay` 后余额不动、rideΔ==ppΔ、流水 CONFIRMED 带 `pp_receipt`、码过期 **409**、不存在码 **404**、超免密/越权 **403**、短信默认掩码、账面守恒 + 镜像 0 积压 + pp 对账全过。
+- 二维码自检：解析自生成 SVG → 独立解码（格式 BCH + 双副本一致 + 去掩码 + 蛇形取码 + 去交织 + RS 校验子全 0 + 负载逐字节比对），**11/11 通过**（10 组负载 + 零外链）。
+- `verify-integration.py` **24/24** 继续全过（既有 8 冻结调用与双账本镜像语义未变）。
+- **扫码内容归一**：主扫码 `qrContent` 是扫码 URL（`...?code=MPxxx&amount=…`）而非码值，`normalizeCode()` 从 `code=` 提取；直接拿 qrContent 当码值调 pp 会 404。
+- **环境教训**：pp 被 F 段重启后 account→accounting 目录可能 `invokers: 0`，pp `cashier.methods` 返 500 B0002（ride 如实透传，非 ride 缺陷），需等自愈/过稳定性门禁；脚本已加域间边预热 + 瞬时 503 同键重试。新建司机默认 OFFLINE 须先上线；COMPLETED 未支付司机保持 BUSY，故改用专用测试司机。

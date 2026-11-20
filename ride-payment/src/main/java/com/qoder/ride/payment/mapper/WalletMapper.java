@@ -31,6 +31,14 @@ public interface WalletMapper {
     @Update("UPDATE wallet SET balance=balance+#{amount}, updated_at=#{now} WHERE user_id=#{userId}")
     int credit(@Param("userId") String userId, @Param("amount") long amount, @Param("now") long now);
 
+    /**
+     * 外部资金清算户扣款（无余额守卫，允许透支）：银行卡支付的出资方是外部银行，
+     * 对标 payment-pro 的 SYS_CASH，余额为负表示待清算的外部资金，不是用户钱包。
+     * 仅限系统清算户使用，严禁用于任何用户钱包。
+     */
+    @Update("UPDATE wallet SET balance=balance-#{amount}, updated_at=#{now} WHERE user_id=#{userId}")
+    int debitClearing(@Param("userId") String userId, @Param("amount") long amount, @Param("now") long now);
+
     /** 提现冻结：可用余额守卫，balance 不变（审计守恒：冻结不落流水）。 */
     @Update("UPDATE wallet SET frozen_amount=frozen_amount+#{amount}, updated_at=#{now} "
             + "WHERE user_id=#{userId} AND balance-frozen_amount>=#{amount}")

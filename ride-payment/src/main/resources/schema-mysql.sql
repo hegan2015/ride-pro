@@ -100,3 +100,41 @@ CREATE TABLE IF NOT EXISTS payment_pro_notify (
     created_at BIGINT        NOT NULL,
     PRIMARY KEY (event, biz_id)
 );
+-- 收银台受理留痕（v1.9.2 additive）：requestId=PAY-{orderId}，只存一次性 verifyToken 与脱敏卡号。
+CREATE TABLE IF NOT EXISTS cashier_request (
+    request_id    VARCHAR(64) PRIMARY KEY,
+    order_id      VARCHAR(32)  NOT NULL,
+    user_id       VARCHAR(32)  NOT NULL,
+    pp_order_id   VARCHAR(32),
+    pp_account_id VARCHAR(32)  NOT NULL,
+    amount        BIGINT       NOT NULL,
+    mode          VARCHAR(16)  NOT NULL,
+    method        VARCHAR(16)  NOT NULL,
+    code          VARCHAR(64),
+    card_no       VARCHAR(32),
+    verify_type   VARCHAR(24),
+    verify_token  VARCHAR(128),
+    status        VARCHAR(16)  NOT NULL,
+    pp_payment_id VARCHAR(32),
+    last_error    VARCHAR(256),
+    created_at    BIGINT       NOT NULL,
+    updated_at    BIGINT       NOT NULL,
+    INDEX idx_cashier_req_order (order_id)
+);
+
+-- 收银台付款码留痕（v1.9.2 additive）。
+CREATE TABLE IF NOT EXISTS cashier_code (
+    code          VARCHAR(64) PRIMARY KEY,
+    order_id      VARCHAR(32),
+    user_id       VARCHAR(32)  NOT NULL,
+    pp_order_id   VARCHAR(32),
+    pp_account_id VARCHAR(32)  NOT NULL,
+    type          VARCHAR(24)  NOT NULL,
+    amount        BIGINT,
+    status        VARCHAR(16)  NOT NULL,
+    request_id    VARCHAR(64),
+    expire_at     BIGINT,
+    created_at    BIGINT       NOT NULL,
+    updated_at    BIGINT       NOT NULL,
+    INDEX idx_cashier_code_order (order_id)
+);

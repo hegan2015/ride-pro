@@ -4,6 +4,7 @@ import com.qoder.ride.common.result.Result;
 import com.qoder.ride.facade.common.PageDTO;
 
 import java.util.List;
+import java.util.Map;
 
 /** 支付域：乘客/司机钱包与行程扣款。对标滴滴支付/钱包系统。 */
 public interface PaymentFacade {
@@ -77,4 +78,44 @@ public interface PaymentFacade {
 
     /** 人工关闭镜像 DEAD 事件（线下处理完毕后销账，不再告警），返回关闭条数。 */
     Result<Integer> closeMirror(String bizNo, String reason);
+
+    // ---------------- 收银台开放能力（payment-pro cashier.*，additive） ----------------
+    // 沿用既有 userId→pp accountId 映射与 outbox/流水/幂等机制；商户侧用既有 merchantAccountId。
+    // 返回 Map 为 pp 裸数据透传（已脱敏），不含任何密钥。
+
+    /** cashier.methods：支付方式渲染（9 方式 + 实付 + 小额免密限额）。 */
+    Result<Map<String, Object>> cashierMethods(CashierRequest request);
+
+    /** cashier.code.create：生成付款码（被扫）/ 收款码（主扫），落 cashier_code 留痕。 */
+    Result<Map<String, Object>> cashierCodeCreate(CashierRequest request);
+
+    /** cashier.code.parse：解析码（只读不核销）。 */
+    Result<Map<String, Object>> cashierCodeParse(String code);
+
+    /** cashier.code.query：查询码状态（ACTIVE/CONSUMED/EXPIRED），同步本地留痕。 */
+    Result<Map<String, Object>> cashierCodeQuery(String code);
+
+    /** cashier.scanPay：扫码受理（核销+验证+幂等支付），本地划转与镜像回执同既有 PAY 语义。 */
+    Result<CashierPayDTO> cashierScanPay(CashierRequest request);
+
+    /** cashier.verify：支付验证四型，失败不落单不扣款。 */
+    Result<Map<String, Object>> cashierVerify(CashierRequest request);
+
+    /** cashier.payVerified：验证前置受理（幂等 requestId=PAY-{orderId}）。 */
+    Result<CashierPayDTO> cashierPayVerified(CashierRequest request);
+
+    /** cashier.payPassword.set：设置/重置支付口令（口令不落库不回显）。 */
+    Result<Boolean> cashierPayPasswordSet(CashierRequest request);
+
+    /** cashier.sms.send：发送短信验证码（默认掩码，sandbox=true 返明文仅联调）。 */
+    Result<Map<String, Object>> cashierSmsSend(CashierRequest request);
+
+    /** 收银台受理留痕查询（requestId/ppOrderId/ppPaymentId/状态），供结果页轮询与对账。 */
+    Result<Map<String, Object>> cashierReceipt(String orderId);
+
+    /** 双账本历史冲正：本地多腿更正（Σ=0），只增冲正腿不改原行，requestId 幂等，留审计。 */
+    Result<Map<String, Object>> correctLedger(LedgerCorrectionRequest request);
+
+    /** 双账本基线重算：仅镜像全局静默时允许，返回逐户 old→new 快照与依据。 */
+    Result<Map<String, Object>> rebaselineDualLedger();
 }

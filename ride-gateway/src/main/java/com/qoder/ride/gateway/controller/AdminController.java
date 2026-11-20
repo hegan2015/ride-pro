@@ -9,6 +9,7 @@ import com.qoder.ride.facade.order.OrderFacade;
 import com.qoder.ride.facade.passenger.PassengerCreateRequest;
 import com.qoder.ride.facade.passenger.PassengerDTO;
 import com.qoder.ride.facade.passenger.PassengerFacade;
+import com.qoder.ride.facade.payment.LedgerCorrectionRequest;
 import com.qoder.ride.facade.payment.LedgerQuery;
 import com.qoder.ride.facade.payment.PaymentFacade;
 import com.qoder.ride.facade.payment.TopupRequest;
@@ -20,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -270,6 +272,24 @@ public class AdminController {
         data.put("topupPerUser", 20000);
         data.put("note", "只增不删：按手机号去重，充值幂等，重复执行不产生重复数据");
         return ResponseEntity.ok(data);
+    }
+
+    /**
+     * 双账本历史冲正：本地多腿更正（借贷必相等），只增冲正腿不改原行，requestId 幂等。
+     * 用于修复 CARD 误扣乘客钱包、pp 终态 FAILED 但本地已确认两类历史缺口。
+     */
+    @PostMapping("/ledger/correct")
+    public ResponseEntity<Object> correctLedger(@RequestBody LedgerCorrectionRequest request) {
+        log.warn("管理端双账本冲正 requestId={} orderId={} reason={}",
+                request.getRequestId(), request.getOrderId(), request.getReason());
+        return GatewaySupport.of(paymentFacade.correctLedger(request));
+    }
+
+    /** 双账本基线重算：仅镜像全局静默时允许；须先完成资金冲正，否则会掩盖真实缺口。 */
+    @PostMapping("/dual-ledger/rebaseline")
+    public ResponseEntity<Object> rebaselineDualLedger() {
+        log.warn("管理端双账本基线重算");
+        return GatewaySupport.of(paymentFacade.rebaselineDualLedger());
     }
 
     private List<String> tail(Path file, int lines) throws IOException {

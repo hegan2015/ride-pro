@@ -137,6 +137,8 @@ label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px;font-weig
 .immsg span{max-width:75%;border-radius:12px;padding:8px 11px;font-size:13px;background:#fff;box-shadow:var(--shadow)}
 .immsg.me span{background:var(--orange);color:#fff}
 </style>
+<!-- 收银台专用样式（支付宝设计语言，作用域限定 .cs-overlay；本地文件，零 CDN） -->
+<link id="csStyle" rel="stylesheet" href="cashier.css">
 </head>
 <body>
 <div id="app">
@@ -234,6 +236,7 @@ label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px;font-weig
       <input id="topupAmount" type="number" value="100" min="1">
       <div class="btns"><button class="ghost" data-amt="50">¥50</button><button class="ghost" data-amt="100">¥100</button><button class="ghost" data-amt="200">¥200</button></div>
       <div class="btns"><button class="green block" id="btnTopup">充值</button></div>
+      <div class="btns"><button class="ghost block" id="btnCashier">🧾 待付行程收银台</button></div>
       <div class="spread" style="margin-top:12px"><span class="muted small">免密自动扣款</span><input type="checkbox" id="autoPayToggle" style="width:auto"></div>
     </div>
     <div class="card" style="margin-top:12px">
@@ -275,6 +278,7 @@ label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px;font-weig
 </div>
 
 <script src="common.js"></script>
+<script src="cashier.js"></script>
 <script>
 const STEPS=['DISPATCHING','ACCEPTED','ARRIVED','IN_PROGRESS','COMPLETED','PAID'];
 const SVC=[{k:'EXPRESS',n:'快车'},{k:'TEHUI',n:'特惠'},{k:'CARPOOL',n:'拼车'},{k:'YOUXIANG',n:'优享'},{k:'PREMIER',n:'专车'},{k:'LUXURY',n:'豪华'},{k:'TAXI',n:'出租车'}];
@@ -436,7 +440,14 @@ async function cancelOrder(){
   if(!ok)return;
   try{await api('POST',`/api/orders/${order.id}/cancel?reason=`+encodeURIComponent('乘客主动取消'));fallbackSvcs=[];refreshOrder(order.id);refreshWallet();}catch(e){toast(e.message,'err');}
 }
+// 行程结束支付入口 → 收银台（payment-pro 开放能力，ride 渲染：方式选择/付款码/扫码/验证/结果页）
 async function payOrder(){
+  if(!order)return;
+  if(typeof window.openCashier==='function')return window.openCashier(order.id);
+  return legacyPayOrder();
+}
+// 兜底：收银台脚本不可用时退回原钱包快捷支付（语义与既有 /api/orders/{id}/pay 一致）
+async function legacyPayOrder(){
   const fare=order.actualFare||order.fare;
   const ok=await confirmDialog(`<h3>确认支付车费</h3>${fareHtml(fare)}${coupon?`<div class="kv"><span class="k">优惠券</span><span class="v" style="color:var(--orange)">-${yuan(couponSave())}</span></div>`:''}
     <label>支付方式</label><select id="payCh"><option value="WALLET">钱包余额</option><option value="WECHAT">微信（演示）</option><option value="ALIPAY">支付宝（演示）</option><option value="CARD">银行卡（演示）</option></select>
@@ -887,6 +898,15 @@ $('btnTopup').onclick=async()=>{
   finally{btn.disabled=false;}
 };
 document.querySelectorAll('[data-amt]').forEach(b=>b.onclick=()=>{$('topupAmount').value=b.dataset.amt;});
+$('btnCashier').onclick=async()=>{
+  if(!passenger)return toast('请先选择身份','warn');
+  let target=(order&&order.status==='COMPLETED')?order:null;
+  if(!target){
+    try{const list=await api('GET','/api/orders?passengerId='+passenger.id);target=list.find(o=>o.status==='COMPLETED');}catch{}
+  }
+  if(!target)return toast('暂无待付行程','warn');
+  if(typeof window.openCashier==='function')window.openCashier(target.id);else toast('收银台不可用','err');
+};
 $('autoPayToggle').onchange=async()=>{
   if(!passenger){$('autoPayToggle').checked=false;return toast('请先选择身份','warn');}
   const enabled=$('autoPayToggle').checked;

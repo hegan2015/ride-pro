@@ -13,6 +13,8 @@ import com.qoder.ride.payment.client.PaymentProClient;
 import com.qoder.ride.payment.client.PaymentProIntegration;
 import com.qoder.ride.payment.config.PaymentProperties;
 import com.qoder.ride.payment.dataobject.WithdrawOrderDO;
+import com.qoder.ride.payment.mapper.CashierCodeMapper;
+import com.qoder.ride.payment.mapper.CashierRequestMapper;
 import com.qoder.ride.payment.mapper.IdempotentMapper;
 import com.qoder.ride.payment.mapper.LedgerMapper;
 import com.qoder.ride.payment.mapper.MirrorOutboxMapper;
@@ -82,6 +84,8 @@ class PaymentConsistencyTest {
         cfg.addMapper(RefundOutboxMapper.class);
         cfg.addMapper(MirrorOutboxMapper.class);
         cfg.addMapper(PaymentProAccountMapper.class);
+        cfg.addMapper(CashierRequestMapper.class);
+        cfg.addMapper(CashierCodeMapper.class);
         SqlSessionFactory factory = new SqlSessionFactoryBuilder().build(cfg);
         SqlSessionTemplate template = new SqlSessionTemplate(factory);
         walletMapper = template.getMapper(WalletMapper.class);
@@ -96,7 +100,8 @@ class PaymentConsistencyTest {
         MirrorOutboxMapper mirrorOutboxMapper = template.getMapper(MirrorOutboxMapper.class);
         PaymentProIntegration integration = new PaymentProIntegration(
                 client, template.getMapper(PaymentProAccountMapper.class), properties);
-        MirrorExecutor mirrorExecutor = new MirrorExecutor(mirrorOutboxMapper, ledgerMapper, integration, client, properties);
+        MirrorExecutor mirrorExecutor = new MirrorExecutor(mirrorOutboxMapper, ledgerMapper, integration, client, properties,
+                template.getMapper(CashierRequestMapper.class), template.getMapper(CashierCodeMapper.class));
         service = new PaymentService(walletMapper, ledgerMapper, idempotentMapper, outboxMapper,
                 refundOutboxMapper, withdrawOrderMapper, tt, properties,
                 mirrorOutboxMapper, integration, mirrorExecutor);
